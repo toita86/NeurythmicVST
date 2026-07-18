@@ -1,4 +1,4 @@
-This is a VST3 audio plugin named Tremolo developed by Jan Wilczek.
+This is a VST3 audio plugin named Neurythmic is developed by Eduard Brahas aka Toita86 on github 
 
 To install it on your system:
 
