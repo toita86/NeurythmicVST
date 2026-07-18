@@ -73,18 +73,26 @@ endif()
 
 # Adds a plugin target.
 set(NEURYTHMIC_PLUGIN_NAME "Neurythmic")
+
+# sets the metadata of the plugin 
 juce_add_plugin(
   NeurythmicPlugin
   PRODUCT_NAME
     ${NEURYTHMIC_PLUGIN_NAME}
   VERSION
+    # the vesrion is specified using semantic versioning
+    # major.minor.patch
     0.0.0 # 0 forces AU hosts to always refresh
   COMPANY_NAME
-    "ToitaIndustries"
-  PLUGIN_MANUFACTURER_CODE
-    Neur
+    "Toita86"
+  PLUGIN_MANUFACTURER_CODE 
+    # Both the manufacturing code and 
+    # the plugin code must be a 4 letter code
+    # that start with a capital letter and
+    # the rest lower case. On release should not be changed
+    Toit
   PLUGIN_CODE
-    Nt01
+    Ntpl
   FORMATS
     Standalone
     AU
@@ -98,7 +106,7 @@ juce_add_plugin(
   VST3_AUTO_MANIFEST
     FALSE
   COPY_PLUGIN_AFTER_BUILD
-    FALSE
+    TRUE 
 )
 
 # Configures the JUCE sources included in the plugin target.
