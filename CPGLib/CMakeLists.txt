@@ -1,32 +1,25 @@
-cmake_minimum_required(VERSION 4.0)
-set(CMAKE_OSX_ARCHITECTURES x86_64;i386)
+cmake_minimum_required(VERSION 3.15)
 
-if (POLICY CMP0025)
-  cmake_policy(SET CMP0025 NEW)
-endif ()
+project(MatsuokaEngine LANGUAGES CXX C)
 
-set (CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_FLAGS "-std=c++23 ${CMAKE_CXX_FLAGS}")
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-project(MatsuokaEngine)
+if(APPLE)
+    set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "" FORCE)
+endif()
 
-aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR} MAT_SOURCES)
-
-#file(GLOB MAT_SOURCES "*.cpp *.c")
+file(GLOB MAT_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.c"
+)
 
 add_library(MatsuokaEngine STATIC ${MAT_SOURCES})
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-	add_definitions(
-		-DDEBUG
-	)
-	set(
-		CMAKE_LIBRARY_OUTPUT_DIRECTORY
-		../../build/x64/Debug
-	)
-else ()
-	set(
-		CMAKE_LIBRARY_OUTPUT_DIRECTORY
-		../../build/x64/Release
-	)
-endif ()
+target_include_directories(MatsuokaEngine PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(MatsuokaEngine PRIVATE DEBUG)
+endif()

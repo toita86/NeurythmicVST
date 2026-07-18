@@ -362,3 +362,22 @@ pybindings/venv/
 # JUCE 
 cmake-build/
 libs/
+
+# Build directories from CMake presets
+build/
+ninja-*-build/
+cmake-build-*/
+cmake-release-*/
+vs-build/
+xcode-build/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
