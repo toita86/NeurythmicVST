@@ -1,12 +1,13 @@
 #include "../include/Neurythmic/PluginProcessor.h"
+#include "../../CPGLib/MatsuokaEngine.h"
 
 namespace neurythmic {
 
 PluginProcessor::PluginProcessor()
     : AudioProcessor(
-          BusesProperties()
-              .withInput("Input", juce::AudioChannelSet::stereo(), true)
-              .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {}
+          BusesProperties().withOutput("Output",
+                                       juce::AudioChannelSet::stereo(),
+                                       true)) {}
 
 PluginProcessor::~PluginProcessor() = default;
 
@@ -45,11 +46,11 @@ void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
 void PluginProcessor::releaseResources() {}
 
 bool PluginProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
-  if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono() &&
-      layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+  if (layouts.getNumChannels(true, 0) > 0)  // reject input buses
     return false;
 
-  if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
+  if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono() &&
+      layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
     return false;
 
   return true;

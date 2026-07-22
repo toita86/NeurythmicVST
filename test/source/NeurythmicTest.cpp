@@ -9,6 +9,13 @@ TEST(NeurythmicPlugin, PluginCanBeCreated)
     EXPECT_FALSE(processor.getName().isEmpty());
 }
 
+TEST(NeurythmicPlugin, IsInstrumentType)
+{
+    neurythmic::PluginProcessor processor;
+    EXPECT_FALSE(processor.isMidiEffect());
+    EXPECT_EQ(processor.getTotalNumInputChannels(), 0);
+}
+
 TEST(NeurythmicPlugin, HasEditor)
 {
     neurythmic::PluginProcessor processor;
@@ -27,12 +34,21 @@ TEST(NeurythmicPlugin, ProducesMidi)
     EXPECT_TRUE(processor.producesMidi());
 }
 
+TEST(NeurythmicPlugin, RejectsInputBuses)
+{
+    neurythmic::PluginProcessor processor;
+
+    juce::AudioProcessor::BusesLayout inputLayout;
+    inputLayout.inputBuses.add(juce::AudioChannelSet::stereo());
+
+    EXPECT_FALSE(processor.isBusesLayoutSupported(inputLayout));
+}
+
 TEST(NeurythmicPlugin, SupportsStereoLayout)
 {
     neurythmic::PluginProcessor processor;
     
     juce::AudioProcessor::BusesLayout stereoLayout;
-    stereoLayout.inputBuses.add(juce::AudioChannelSet::stereo());
     stereoLayout.outputBuses.add(juce::AudioChannelSet::stereo());
     
     EXPECT_TRUE(processor.isBusesLayoutSupported(stereoLayout));
@@ -43,7 +59,6 @@ TEST(NeurythmicPlugin, SupportsMonoLayout)
     neurythmic::PluginProcessor processor;
     
     juce::AudioProcessor::BusesLayout monoLayout;
-    monoLayout.inputBuses.add(juce::AudioChannelSet::mono());
     monoLayout.outputBuses.add(juce::AudioChannelSet::mono());
     
     EXPECT_TRUE(processor.isBusesLayoutSupported(monoLayout));

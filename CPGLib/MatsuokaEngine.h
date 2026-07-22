@@ -137,7 +137,7 @@ public:
   // Not sure these will actually be neccessary. Suspend judgement
   // const vector<MatsuNode&> getNetworkDescription() const;
   //// virtual function on receiving class to handle this regardless of its
-  ///event specialisation
+  /// event specialisation
   // MatsuNode getEventDetails(unsigned nodeID) const;
 
   // QUEUEING METHODS
