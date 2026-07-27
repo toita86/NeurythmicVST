@@ -32,8 +32,12 @@ midi integration.
 ---
 
 Completed:
-Evidence:
+* write one deterministic or tolerance-based test.
+
 Unexpected learning:
+The test suite import system is straight forward
+
 Remaining blocker:
-Hours used:
+
 Next smallest step:
+starting to see how the UI works in JUCE
