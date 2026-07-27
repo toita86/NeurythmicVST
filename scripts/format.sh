@@ -47,7 +47,7 @@ done
 echo -e "${GREEN}=== Formatting C++ Files ===${NC}"
 
 # Find all C++ files
-FILES=$(find neurythmic_plugin CPGLib -type f \( -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) 2>/dev/null)
+FILES=$(find neurythmic_plugin CPGLib examples -type f \( -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) 2>/dev/null)
 
 if [ -z "$FILES" ]; then
     echo -e "${YELLOW}No C++ files found${NC}"

@@ -1,2 +1,2 @@
-# Example applications will be added here
-message(STATUS "Examples directory - no examples configured yet")
+add_executable(cpg_rhythm_demo cpg_rhythm_demo.cpp)
+target_link_libraries(cpg_rhythm_demo PRIVATE MatsuokaEngine)

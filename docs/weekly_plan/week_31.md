@@ -38,6 +38,11 @@ No midi and advanced animations
 ---
 
 Completed:
+* Construct the smallest possible CPG network.
+* Run it for a fixed simulated duration.
+* print event times or write them to a CSV/log file;
+* identify how node frequency and coupling affect 
+
 Evidence:
 Unexpected learning:
 Remaining blocker:
