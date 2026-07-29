@@ -1,16 +1,18 @@
 #include "../include/Neurythmic/PluginProcessor.h"
-#include "../../CPGLib/MatsuokaEngine.h"
 
 namespace neurythmic {
 
+// Contructor
 PluginProcessor::PluginProcessor()
-    : AudioProcessor(
-          BusesProperties().withOutput("Output",
-                                       juce::AudioChannelSet::stereo(),
-                                       true)) {}
+    : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),_engine(44100) {
+  _setupNetwork();
+  _engine.doQueuedActions();
+  _engine.calibrate();
+}
 
 PluginProcessor::~PluginProcessor() = default;
 
+// PUBLIC
 const juce::String PluginProcessor::getName() const {
   return NEURYTHMIC_PLUGIN_NAME;
 }
@@ -40,6 +42,7 @@ const juce::String PluginProcessor::getProgramName(int) {
 void PluginProcessor::changeProgramName(int, const juce::String&) {}
 
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
+  _engine.setSampleRate(static_cast<unsigned>(sampleRate));
   juce::ignoreUnused(sampleRate, samplesPerBlock);
 }
 
@@ -62,11 +65,19 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
   juce::ScopedNoDenormals noDenormals;
 
+  if (_running) {
+    _engine.doQueuedActions();
+
+    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+      _engine.step();
+  }
+
   auto totalNumInputChannels = getTotalNumInputChannels();
   auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-  for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+  for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i) {
     buffer.clear(i, 0, buffer.getNumSamples());
+  }
 }
 
 void PluginProcessor::processBlock(juce::AudioBuffer<double>& buffer,
@@ -75,11 +86,20 @@ void PluginProcessor::processBlock(juce::AudioBuffer<double>& buffer,
 
   juce::ScopedNoDenormals noDenormals;
 
+  if (_running) {
+    _engine.doQueuedActions();
+
+    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+      _engine.step();
+  }
+
+
   auto totalNumInputChannels = getTotalNumInputChannels();
   auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-  for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+  for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i) {
     buffer.clear(i, 0, buffer.getNumSamples());
+  }
 }
 
 void PluginProcessor::getStateInformation(juce::MemoryBlock& destData) {
@@ -96,6 +116,48 @@ juce::AudioProcessorEditor* PluginProcessor::createEditor() {
 
 bool PluginProcessor::hasEditor() const {
   return true;
+}
+
+// Getters exposed for the editor
+int PluginProcessor::getNodeCount() const {
+  return _engine.getNodeList().size();
+}
+int PluginProcessor::getNodeSignalState(u_int id) const {
+  return static_cast<int>(_engine.getNode(id).getSignalState());
+}
+double PluginProcessor::getNodeOutput(u_int id) const {
+  return _engine.getNode(id).getOutput();
+}
+double PluginProcessor::getNodeFrequency(u_int id) const {
+  return _engine.getNodeFrequency(id);
+}
+bool PluginProcessor::isEngineRunning() const {
+  return _running;
+}
+void PluginProcessor::startEngine(){
+  _running = true;
+}
+void PluginProcessor::stopEngine(){
+  _running = false;
+}
+
+
+// PRIVATE
+void PluginProcessor::_setupNetwork() {
+  _engine.addChild(0, 1);     // node 1 is child of root
+  _engine.addChild(0, 2);     // node 2 is child of root
+  _engine.doQueuedActions();  // <-- THIS applies the additions
+  /*
+  addChild is a QUEUED ACTION. Until doQueuedActions(), the network still has
+  only node 0. After, it has 3 nodes. doQueuedActions() is the gate.
+  */
+
+  _engine.setNodeFrequency(0, 2.0, false);
+  _engine.setNodeFrequency(1, 2.7, false);
+  _engine.setNodeFrequency(2, 3.3, false);
+  _engine.setConnection(0, 1, 0.15);
+  _engine.setConnection(0, 2, 0.15);
+  _engine.doQueuedActions();
 }
 
 }  // namespace neurythmic

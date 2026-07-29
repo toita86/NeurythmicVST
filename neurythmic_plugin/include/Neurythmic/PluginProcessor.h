@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "MatsuokaEngine.h"
 
 namespace neurythmic {
 
@@ -37,8 +38,21 @@ public:
   void getStateInformation(juce::MemoryBlock& destData) override;
   void setStateInformation(const void* data, int sizeInBytes) override;
 
+  // Getters exposed for the editor
+  int getNodeCount() const;
+  int getNodeSignalState(u_int id) const;
+  double getNodeOutput(u_int id) const;
+  double getNodeFrequency(u_int id) const;
+  bool isEngineRunning() const;
+  void startEngine();
+  void stopEngine();
+
 private:
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginProcessor)
+
+  MatsuokaEngine _engine;
+  bool _running = true;
+  void _setupNetwork();
 };
 
 }  // namespace neurythmic

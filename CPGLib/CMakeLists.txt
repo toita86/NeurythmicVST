@@ -16,6 +16,9 @@ file(GLOB MAT_SOURCES
 
 add_library(MatsuokaEngine STATIC ${MAT_SOURCES})
 
+# Why: Static libraries don't need -fPIC when linked into an executable, but the VST3 plugin is a shared library (.so), which requires all its code to be position-independent. Since MatsuokaEngine is compiled as a static lib that gets pulled into the .so, every .o inside it must also be PIC.
+set_target_properties(MatsuokaEngine PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 target_include_directories(MatsuokaEngine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )

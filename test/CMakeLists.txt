@@ -23,6 +23,7 @@ add_executable(NeurythmicTests
 
 target_include_directories(NeurythmicTests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/../CPGLib 
 )
 
 target_link_libraries(NeurythmicTests
@@ -30,6 +31,7 @@ target_link_libraries(NeurythmicTests
     juce::juce_audio_processors
     juce::juce_audio_utils
     juce::juce_audio_devices
+    MatsuokaEngine
     GTest::gtest_main
 )
 
