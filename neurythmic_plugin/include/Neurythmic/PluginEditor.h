@@ -11,6 +11,15 @@ public:
   ~PluginEditor() override =
       default;  // tells the compiler to generate the default destructor.
 
+  // Every Component (and AudioProcessorEditor is one) can draw itself. Override
+  // paint() and JUCE calls it whenever the window needs to be redrawn:
+  // Windowshows up → paint()
+  // Window resized → paint()
+  // You call repaint() → paint()
+  // The juce::Graphics& g object is your drawing canvas.
+  // It has its origin at (0, 0) = top-left corner of the component.
+  void paint(juce::Graphics& g) override;
+
 private:
   PluginProcessor& _processor;  // read-only access to engine state
 };

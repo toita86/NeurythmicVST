@@ -1,4 +1,5 @@
 #include "../include/Neurythmic/PluginProcessor.h"
+#include "../include/Neurythmic/PluginEditor.h"
 
 namespace neurythmic {
 
@@ -114,7 +115,7 @@ void PluginProcessor::setStateInformation(const void* data, int sizeInBytes) {
 }
 
 juce::AudioProcessorEditor* PluginProcessor::createEditor() {
-  return new juce::GenericAudioProcessorEditor(*this);
+  return new PluginEditor(*this);  // uses the defined PluginEditor
 }
 
 bool PluginProcessor::hasEditor() const {

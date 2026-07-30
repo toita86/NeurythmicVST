@@ -19,6 +19,7 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 add_executable(NeurythmicTests
   source/NeurythmicTest.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginProcessor.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginEditor.cpp
 )
 
 target_include_directories(NeurythmicTests PRIVATE
