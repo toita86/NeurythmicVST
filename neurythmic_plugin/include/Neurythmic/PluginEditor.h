@@ -3,7 +3,7 @@
 #include "PluginProcessor.h"
 
 namespace neurythmic {
-class PluginEditor : public juce::AudioProcessorEditor {
+class PluginEditor : public juce::AudioProcessorEditor, juce::Button::Listener {
 public:
   explicit PluginEditor(
       PluginProcessor& p);  // explicit prevents accidental implicit conversion
@@ -19,6 +19,12 @@ public:
   // The juce::Graphics& g object is your drawing canvas.
   // It has its origin at (0, 0) = top-left corner of the component.
   void paint(juce::Graphics& g) override;
+
+  juce::TextButton _startStopButton;
+
+  void resized() override;
+
+  void buttonClicked(juce::Button* b) override;
 
 private:
   PluginProcessor& _processor;  // read-only access to engine state
