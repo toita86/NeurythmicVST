@@ -4,7 +4,11 @@ namespace neurythmic {
 
 // Contructor
 PluginProcessor::PluginProcessor()
-    : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),_engine(44100) {
+    : AudioProcessor(
+          BusesProperties().withOutput("Output",
+                                       juce::AudioChannelSet::stereo(),
+                                       true)),
+      _engine(44100) {
   _setupNetwork();
   _engine.doQueuedActions();
   _engine.calibrate();
@@ -93,7 +97,6 @@ void PluginProcessor::processBlock(juce::AudioBuffer<double>& buffer,
       _engine.step();
   }
 
-
   auto totalNumInputChannels = getTotalNumInputChannels();
   auto totalNumOutputChannels = getTotalNumOutputChannels();
 
@@ -134,13 +137,12 @@ double PluginProcessor::getNodeFrequency(u_int id) const {
 bool PluginProcessor::isEngineRunning() const {
   return _running;
 }
-void PluginProcessor::startEngine(){
+void PluginProcessor::startEngine() {
   _running = true;
 }
-void PluginProcessor::stopEngine(){
+void PluginProcessor::stopEngine() {
   _running = false;
 }
-
 
 // PRIVATE
 void PluginProcessor::_setupNetwork() {
