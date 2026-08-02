@@ -9,6 +9,8 @@ void NodeComponent::setAmplitude(double amp) {
   _amplitude = amp;
 }
 void NodeComponent::setFiring(bool firing) {
+  if (firing)
+    _lastFireTime = juce::Time::currentTimeMillis();
   _firing = firing;
 }
 void NodeComponent::setFrequency(double hz) {
@@ -16,8 +18,12 @@ void NodeComponent::setFrequency(double hz) {
 }
 void NodeComponent::paint(juce::Graphics& g) {
   float radius = 20.0f + (_amplitude * 60.0f);
-  juce::Colour colour = _firing ? juce::Colours::yellow.brighter(0.3f)
-                                : juce::Colour(40, 100, 180);
+
+  auto msSinceFire = juce::Time::currentTimeMillis() - _lastFireTime;
+  bool flashing = (msSinceFire < 150);
+
+  juce::Colour colour = flashing ? juce::Colours::yellow.brighter(0.5f)
+                                 : juce::Colour(40, 100, 180);
 
   g.setColour(colour);
   g.fillEllipse(_centerX - radius, _centerY - radius, radius * 2.0f,

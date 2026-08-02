@@ -19,5 +19,6 @@ private:
   bool _firing = false;
   double _frequency = 0.0;
   float _centerX = 0.0f, _centerY = 0.0f;
+  int64_t _lastFireTime = 0;
 };
 }  // namespace neurythmic

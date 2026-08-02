@@ -75,6 +75,12 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
       _engine.step();
+
+    auto events = _engine.getEvents();
+    for (auto& e : events) {
+      if (e.nodeID < 16)
+        _nodeFired[e.nodeID] = true;
+    }
   }
 
   auto totalNumInputChannels = getTotalNumInputChannels();
@@ -96,6 +102,12 @@ void PluginProcessor::processBlock(juce::AudioBuffer<double>& buffer,
 
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
       _engine.step();
+
+    auto events = _engine.getEvents();
+    for (auto& e : events) {
+      if (e.nodeID < 16)
+        _nodeFired[e.nodeID] = true;
+    }
   }
 
   auto totalNumInputChannels = getTotalNumInputChannels();
@@ -120,6 +132,12 @@ juce::AudioProcessorEditor* PluginProcessor::createEditor() {
 
 bool PluginProcessor::hasEditor() const {
   return true;
+}
+
+std::array<bool, 16> PluginProcessor::popFiredNodes() {
+  auto copy = _nodeFired;
+  _nodeFired.fill(false);
+  return copy;
 }
 
 // Getters exposed for the editor

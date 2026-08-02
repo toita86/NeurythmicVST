@@ -62,16 +62,16 @@ void PluginEditor::timerCallback() {
   if (!_processor.isEngineRunning())
     return;
 
+  auto& engine = _processor.getEngine();
+  auto fired = _processor.popFiredNodes();
+
   for (unsigned i = 0; i < static_cast<unsigned>(_processor.getNodeCount());
        ++i) {
-    auto& engine = _processor.getEngine();  // need getEngine() on processor!
     auto& node = engine.getNode(i);
 
-    double amplitude = std::abs(node.getOutput()) * 0.5;
-    bool firing = (node.getSignalState() == MatsuNode::signalState::zeroXup);
-
-    _nodes[i]->setAmplitude(amplitude);
-    _nodes[i]->setFiring(firing);
+    _nodes[i]->setAmplitude(std::abs(node.getOutput()) * 0.5);
+    _nodes[i]->setFrequency(engine.getNodeFrequency(i));
+    _nodes[i]->setFiring(fired[i]);
     _nodes[i]->repaint();
   }
 }

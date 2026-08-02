@@ -38,6 +38,7 @@ public:
   void getStateInformation(juce::MemoryBlock& destData) override;
   void setStateInformation(const void* data, int sizeInBytes) override;
 
+  std::array<bool, 16> popFiredNodes();
   // Getters exposed for the editor
   int getNodeCount() const;
   int getNodeSignalState(u_int id) const;
@@ -53,6 +54,8 @@ private:
 
   MatsuokaEngine _engine;
   bool _running = true;
+  std::array<bool, 16> _nodeFired{};
+
   void _setupNetwork();
 };
 
