@@ -41,10 +41,16 @@ Completed:
 * Construct the smallest possible CPG network.
 * Run it for a fixed simulated duration.
 * print event times or write them to a CSV/log file;
-* identify how node frequency and coupling affect 
+* identify how node frequency and coupling affect
 
-Evidence:
+* Set up a small JUCE GUI application with CMake.
+* Display a component with two or three node representations.
+* Start/stop the CPG from the UI.
+* Visualize trigger activity.
+* Keep the engine code independent of the component as far as reasonably possible.
+
 Unexpected learning:
-Remaining blocker:
-Hours used:
+The refresh rate of the ui runs at a different speed from the engine
+
 Next smallest step:
+Adding MIDI for daw integration
