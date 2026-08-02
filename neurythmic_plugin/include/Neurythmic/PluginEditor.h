@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "NodeComponent.h"
 #include "PluginProcessor.h"
 
 namespace neurythmic {
@@ -20,13 +21,15 @@ public:
   // It has its origin at (0, 0) = top-left corner of the component.
   void paint(juce::Graphics& g) override;
 
-  juce::TextButton _startStopButton;
-
   void resized() override;
 
   void buttonClicked(juce::Button* b) override;
 
 private:
   PluginProcessor& _processor;  // read-only access to engine state
+  juce::TextButton _startStopButton;
+  NodeComponent _node0;
+  NodeComponent _node1;
+  NodeComponent _node2;
 };
 }  // namespace neurythmic

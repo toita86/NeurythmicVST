@@ -20,11 +20,12 @@ add_executable(NeurythmicTests
   source/NeurythmicTest.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginProcessor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginEditor.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NodeComponent.cpp
 )
 
 target_include_directories(NeurythmicTests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/include
-  ${CMAKE_CURRENT_SOURCE_DIR}/../CPGLib 
+  ${CMAKE_CURRENT_SOURCE_DIR}/../CPGLib
 )
 
 target_link_libraries(NeurythmicTests

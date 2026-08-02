@@ -5,6 +5,14 @@ PluginEditor::PluginEditor(PluginProcessor& p)
     : AudioProcessorEditor(p), _processor(p) {
   addAndMakeVisible(_startStopButton);
   setSize(600, 400);
+
+  addAndMakeVisible(_node0);
+  addAndMakeVisible(_node1);
+  addAndMakeVisible(_node2);
+  _node0.setLabel("Node 0 (root)");
+  _node1.setLabel("Node 1");
+  _node2.setLabel("Node 2");
+
   _startStopButton.setButtonText("Stop");
   _startStopButton.addListener(this);
 }
@@ -21,7 +29,17 @@ void PluginEditor::paint(juce::Graphics& g) {
 }
 
 void PluginEditor::resized() {
-  _startStopButton.setBounds(250, 350, 100, 30);
+  auto area = getLocalBounds();
+
+  area.removeFromTop(40);     // title space
+  area.removeFromBottom(50);  // button space
+
+  int eachWidth = area.getWidth() / 3;
+  _node0.setBounds(area.removeFromLeft(eachWidth));
+  _node1.setBounds(area.removeFromLeft(eachWidth));
+  _node2.setBounds(area);
+
+  _startStopButton.setBounds(getWidth() / 2 - 50, getHeight() - 40, 100, 30);
 }
 
 void PluginEditor::buttonClicked(juce::Button* b) {
