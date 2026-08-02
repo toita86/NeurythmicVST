@@ -13,8 +13,12 @@ PluginEditor::PluginEditor(PluginProcessor& p)
   _node1.setLabel("Node 1");
   _node2.setLabel("Node 2");
 
+  _nodes = {&_node0, &_node1, &_node2};
+
   _startStopButton.setButtonText("Stop");
   _startStopButton.addListener(this);
+
+  startTimerHz(30);
 }
 
 void PluginEditor::paint(juce::Graphics& g) {
@@ -53,4 +57,23 @@ void PluginEditor::buttonClicked(juce::Button* b) {
     }
   }
 }
+
+void PluginEditor::timerCallback() {
+  if (!_processor.isEngineRunning())
+    return;
+
+  for (unsigned i = 0; i < static_cast<unsigned>(_processor.getNodeCount());
+       ++i) {
+    auto& engine = _processor.getEngine();  // need getEngine() on processor!
+    auto& node = engine.getNode(i);
+
+    double amplitude = std::abs(node.getOutput()) * 0.5;
+    bool firing = (node.getSignalState() == MatsuNode::signalState::zeroXup);
+
+    _nodes[i]->setAmplitude(amplitude);
+    _nodes[i]->setFiring(firing);
+    _nodes[i]->repaint();
+  }
+}
+
 }  // namespace neurythmic

@@ -46,6 +46,7 @@ public:
   bool isEngineRunning() const;
   void startEngine();
   void stopEngine();
+  const MatsuokaEngine& getEngine() const { return _engine; }
 
 private:
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginProcessor)

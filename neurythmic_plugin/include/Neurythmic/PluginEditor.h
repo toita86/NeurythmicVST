@@ -1,10 +1,14 @@
 #pragma once
+
+#include <array>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "NodeComponent.h"
 #include "PluginProcessor.h"
 
 namespace neurythmic {
-class PluginEditor : public juce::AudioProcessorEditor, juce::Button::Listener {
+class PluginEditor : public juce::AudioProcessorEditor,
+                     public juce::Button::Listener,
+                     public juce::Timer {
 public:
   explicit PluginEditor(
       PluginProcessor& p);  // explicit prevents accidental implicit conversion
@@ -25,11 +29,14 @@ public:
 
   void buttonClicked(juce::Button* b) override;
 
+  void timerCallback() override;
+
 private:
   PluginProcessor& _processor;  // read-only access to engine state
   juce::TextButton _startStopButton;
   NodeComponent _node0;
   NodeComponent _node1;
   NodeComponent _node2;
+  std::array<NodeComponent*, 3> _nodes{};
 };
 }  // namespace neurythmic
