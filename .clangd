@@ -1,0 +1,8 @@
+CompileFlags:
+  Add:
+    - -Wno-unknown-warning-option
+    - -std=gnu++23
+
+Diagnostics:
+  Suppress: ["build/*", "libs/*"]
+  UnusedIncludes: None
