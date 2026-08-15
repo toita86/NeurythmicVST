@@ -20,6 +20,7 @@ add_executable(NeurythmicTests
   source/NeurythmicTest.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginProcessor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginEditor.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/ConfigManager.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NodeComponent.cpp
 )
 
@@ -34,6 +35,7 @@ target_link_libraries(NeurythmicTests
     juce::juce_audio_utils
     juce::juce_audio_devices
     MatsuokaEngine
+    neurythmic::neurythmic_plugin_assets
     GTest::gtest_main
 )
 
