@@ -176,8 +176,12 @@ void PluginProcessor::_setupNetwork() {
   _engine.setNodeFrequency(0, 2.0, false);
   _engine.setNodeFrequency(1, 2.7, false);
   _engine.setNodeFrequency(2, 3.3, false);
-  _engine.setConnection(0, 1, 0.15);
-  _engine.setConnection(0, 2, 0.15);
+  _engine.setConnection(0, 1, 0.5);
+  _engine.setConnection(0, 2, 0.25);
+
+  // _engine.setNodeQuantiser_Grid(1, MatsuokaEngine::gridType::_24th);
+  // _engine.setNodeQuantiser_Grid(2, MatsuokaEngine::gridType::_24th);
+
   _engine.doQueuedActions();
 }
 

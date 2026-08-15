@@ -74,7 +74,7 @@ endif()
 # Adds a plugin target.
 set(NEURYTHMIC_PLUGIN_NAME "Neurythmic")
 
-# sets the metadata of the plugin 
+# sets the metadata of the plugin
 juce_add_plugin(
   NeurythmicPlugin
   PRODUCT_NAME
@@ -85,8 +85,8 @@ juce_add_plugin(
     0.0.0 # 0 forces AU hosts to always refresh
   COMPANY_NAME
     "Toita86"
-  PLUGIN_MANUFACTURER_CODE 
-    # Both the manufacturing code and 
+  PLUGIN_MANUFACTURER_CODE
+    # Both the manufacturing code and
     # the plugin code must be a 4 letter code
     # that start with a capital letter and
     # the rest lower case. On release should not be changed
@@ -106,7 +106,7 @@ juce_add_plugin(
   VST3_AUTO_MANIFEST
     FALSE
   COPY_PLUGIN_AFTER_BUILD
-    TRUE 
+    TRUE
 )
 
 # Configures the JUCE sources included in the plugin target.
@@ -127,6 +127,8 @@ juce_add_binary_data(neurythmic_plugin_assets
     assets/Logo.png
     assets/Inter-Bold.ttf
     assets/Inter-Medium.ttf
+    assets/settings.xml
+    assets/scalingCurve.txt
 )
 
 add_library(neurythmic::neurythmic_plugin_assets ALIAS neurythmic_plugin_assets)

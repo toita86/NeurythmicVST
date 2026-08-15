@@ -6,4 +6,5 @@
 #include "neurythmic_plugin.h"
 #include "source/PluginProcessor.cpp"
 #include "source/PluginEditor.cpp"
+#include "source/ConfigManager.cpp"
 #include "source/NodeComponent.cpp"
