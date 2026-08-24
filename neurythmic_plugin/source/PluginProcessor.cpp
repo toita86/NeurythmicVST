@@ -1,5 +1,6 @@
 #include "../include/Neurythmic/PluginProcessor.h"
 #include "../include/Neurythmic/PluginEditor.h"
+#include "../include/Neurythmic/ConfigManager.h"
 
 namespace neurythmic {
 
@@ -10,9 +11,17 @@ PluginProcessor::PluginProcessor()
                                        juce::AudioChannelSet::stereo(),
                                        true)),
       _engine(44100) {
-  _setupNetwork();
+  // Using the ConfigManager to setup the Matshuoka Engines
+  auto& cfg = ConfigManager::get();
+  _engine.setParam_c(cfg.c); _engine.setParam_b(cfg.b); _engine.setParam_g(cfg.g);
+  _engine.setFreqCompensation(cfg.freqCompensation);
+  _engine.setConnectionWeightScaling(cfg.connectionWeightScalingOn);
+  _engine.setUnityConnectionWeight(cfg.connectionWeightScalingUnity);
+  _engine.loadConnectionWeightCurve(cfg.getWeightScalingCurveX(), cfg.getWeightScalingCurveY());
   _engine.doQueuedActions();
   _engine.calibrate();
+
+  _setupNetwork();
 }
 
 PluginProcessor::~PluginProcessor() = default;
