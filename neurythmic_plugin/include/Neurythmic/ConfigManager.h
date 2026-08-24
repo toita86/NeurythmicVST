@@ -61,10 +61,10 @@ public:
   // g). It compensates for the entrainment threshold depending on the
   // frequency ratio between connected nodes. The equation params are GLOBAL
   // config here, so the curve is kept global too,
-  // parsed from the embedded scalingCurve.txt. If a future Phase 2 moves c/b/g into
-  // per-preset storage (which the old matsuoka_frontend app supported), this
-  // curve must move into the preset alongside them — a curve is only valid for
-  // the tuning it was generated for.
+  // parsed from the embedded scalingCurve.txt. If a future Phase 2 moves c/b/g
+  // into per-preset storage (which the old matsuoka_frontend app supported),
+  // this curve must move into the preset alongside them — a curve is only valid
+  // for the tuning it was generated for.
   std::vector<float> getWeightScalingCurveX() const;
   std::vector<float> getWeightScalingCurveY() const;
 
