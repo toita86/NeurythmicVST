@@ -197,3 +197,63 @@ TEST(ConfigManager, ParsesScalingCurve) {
     EXPECT_FLOAT_EQ(x[9], 8.0f);
     EXPECT_FLOAT_EQ(y[9], 1.259015544f);
 }
+
+// NETWORK STATE TESTS
+
+TEST(NetworkState, InitCreatesSingleRoot) {
+    auto tree = neurythmic::NetworkState::initEmptyNetwork();
+    EXPECT_TRUE(tree.hasType(neurythmic::NetworkState::IDs::NETWORK));
+    EXPECT_EQ(tree.getNumChildren(), 1);
+
+    auto root = neurythmic::NetworkState::getNode(tree, 0);
+    EXPECT_TRUE(root.isValid());
+    EXPECT_EQ(static_cast<int>(root.getProperty(neurythmic::NetworkState::Props::id)), 0);
+    EXPECT_FLOAT_EQ(static_cast<float>(root.getProperty(neurythmic::NetworkState::Props::positionX)), 0.5f);
+}
+
+TEST(NetworkState, CreateAndLookupNodes) {
+    auto tree = neurythmic::NetworkState::initEmptyNetwork();
+    neurythmic::NetworkState::createNode(tree, 1, 0, 0.25f, 0.75f);
+    neurythmic::NetworkState::createNode(tree, 2, 0, 0.75f, 0.25f);
+
+    EXPECT_EQ(tree.getNumChildren(), 3);
+
+    auto n1 = neurythmic::NetworkState::getNode(tree, 1);
+    EXPECT_TRUE(n1.isValid());
+    EXPECT_EQ(static_cast<int>(n1.getProperty(neurythmic::NetworkState::Props::parentId)), 0);
+
+    auto pc = n1.getChildWithProperty(neurythmic::NetworkState::Props::sourceId, 0);
+    EXPECT_TRUE(pc.isValid());
+    EXPECT_TRUE(pc.hasType(neurythmic::NetworkState::IDs::CONNECTION));
+}
+
+TEST(NetworkState, RemoveNode) {
+    auto tree = neurythmic::NetworkState::initEmptyNetwork();
+    neurythmic::NetworkState::createNode(tree, 1, 0, 0.25f, 0.75f);
+    neurythmic::NetworkState::removeNode(tree, 1);
+
+    EXPECT_EQ(tree.getNumChildren(), 1);
+    EXPECT_FALSE(neurythmic::NetworkState::getNode(tree, 1).isValid());
+}
+
+TEST(NetworkState, ConnectionsAndIteration) {
+    auto tree = neurythmic::NetworkState::initEmptyNetwork();
+    neurythmic::NetworkState::createNode(tree, 1, 0, 0.25f, 0.75f);
+    neurythmic::NetworkState::createNode(tree, 2, 0, 0.75f, 0.25f);
+
+    auto n1 = neurythmic::NetworkState::getNode(tree, 1);
+    neurythmic::NetworkState::createConnection(n1, 2, 0.5, 0.25);
+
+    int nodeCount = 0;
+    neurythmic::NetworkState::forEachNode(tree,
+        [&](juce::ValueTree) { ++nodeCount; });
+    EXPECT_EQ(nodeCount, 3);
+
+    int connCount = 0;
+    neurythmic::NetworkState::forEachConnection(n1,
+        [&](juce::ValueTree) { ++connCount; });
+    EXPECT_EQ(connCount, 2);  // parent-child edge + the extra input
+
+    neurythmic::NetworkState::removeConnection(n1, 2);
+    EXPECT_FALSE(n1.getChildWithProperty(neurythmic::NetworkState::Props::sourceId, 2).isValid());
+}
