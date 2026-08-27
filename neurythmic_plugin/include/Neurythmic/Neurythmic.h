@@ -5,3 +5,4 @@
 #include "ConfigManager.h"
 #include "NodeComponent.h"
 #include "NetworkState.h"
+#include "FlashEnvelope.h"

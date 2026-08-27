@@ -9,3 +9,4 @@
 #include "source/ConfigManager.cpp"
 #include "source/NodeComponent.cpp"
 #include "source/NetworkState.cpp"
+#include "source/FlashEnvelope.cpp"

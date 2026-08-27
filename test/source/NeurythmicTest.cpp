@@ -257,3 +257,36 @@ TEST(NetworkState, ConnectionsAndIteration) {
     neurythmic::NetworkState::removeConnection(n1, 2);
     EXPECT_FALSE(n1.getChildWithProperty(neurythmic::NetworkState::Props::sourceId, 2).isValid());
 }
+
+// FALSHENVELOPE TESTS
+
+TEST(FlashEnvelope, StartsIdleAndZero) {
+    neurythmic::FlashEnvelope env(30.0);
+    EXPECT_DOUBLE_EQ(env.getValue(), 0.0);
+    EXPECT_FALSE(env.getChanged());
+}
+
+TEST(FlashEnvelope, TriggerStartsRising) {
+    neurythmic::FlashEnvelope env(30.0);
+    env.trigger(1.0);
+    EXPECT_TRUE(env.getChanged());
+    env.step();
+    EXPECT_GT(env.getValue(), 0.0);
+}
+
+TEST(FlashEnvelope, NeverExceedsUnity) {
+    neurythmic::FlashEnvelope env(30.0, 50.0, 500.0, 1.0);
+    env.trigger(1.0);
+    for (int i = 0; i < 2000; ++i) {
+        env.step();
+        ASSERT_LE(env.getValue(), 1.0 + 1e-9);
+    }
+}
+
+TEST(FlashEnvelope, ReturnsToIdleAfterFullDecay) {
+    neurythmic::FlashEnvelope env(30.0, 50.0, 500.0, 1.0);
+    env.trigger(1.0);
+    for (int i = 0; i < 2000; ++i) env.step();  // ≫ (50+500)ms × 30Hz
+    EXPECT_FALSE(env.getChanged());
+    EXPECT_DOUBLE_EQ(env.getValue(), 0.0);
+}
