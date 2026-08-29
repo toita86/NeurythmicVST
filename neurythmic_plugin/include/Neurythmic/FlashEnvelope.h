@@ -11,7 +11,7 @@ namespace neurythmic {
 // `sampleRate` so attack/decay are in real milliseconds.
 class FlashEnvelope {
 public:
-  explicit FlashEnvelope(double sampleRate,
+  explicit FlashEnvelope(double frameRate,
                          double attackMs = 50.0,
                          double decayMs = 500.0,
                          double curveExpo = 1.0);
@@ -30,11 +30,11 @@ private:
   double _decay;
   double _curve;
   double _velocity = 1.0;
-  double _sampleRate;
+  double _frameRate;
   State _state = State::Idle;
 
-  double attackChange() const { return 1000.0 / (_attack * _sampleRate); }
-  double decayChange() const { return -1000.0 / (_decay * _sampleRate); }
+  double attackChange() const { return 1000.0 / (_attack * _frameRate); }
+  double decayChange() const { return -1000.0 / (_decay * _frameRate); }
 };
 
 }  // namespace neurythmic

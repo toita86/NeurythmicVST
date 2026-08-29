@@ -4,20 +4,13 @@ namespace neurythmic {
 PluginEditor::PluginEditor(PluginProcessor& p)
     : AudioProcessorEditor(p), _processor(p) {
   addAndMakeVisible(_startStopButton);
-  setSize(600, 400);
-
-  addAndMakeVisible(_node0);
-  addAndMakeVisible(_node1);
-  addAndMakeVisible(_node2);
-  _node0.setLabel("Node 0 (root)");
-  _node1.setLabel("Node 1");
-  _node2.setLabel("Node 2");
-
-  _nodes = {&_node0, &_node1, &_node2};
-
+  addAndMakeVisible(_createChildButton);
   _startStopButton.setButtonText("Stop");
   _startStopButton.addListener(this);
-
+  _createChildButton.setButtonText("add child");
+  _createChildButton.addListener(this);
+  setSize(600, 400);
+  _rebuildNodes();
   startTimerHz(30);
 }
 
@@ -26,24 +19,50 @@ void PluginEditor::paint(juce::Graphics& g) {
 
   g.setColour(juce::Colours::white);
   g.setFont(24.0f);
-  g.drawText(
-      "Neurythmic CPG", getLocalBounds(),
-      juce::Justification::centredTop);  // centredTop = horizontally centered,
-                                         // vertically at the top edge.
+  g.drawText("Neurythmic CPG", getLocalBounds(),
+             juce::Justification::centredTop);
+}
+
+// Returns true when the number of node components changed (so the caller knows
+// to re-run resized() and give the new components real bounds).
+bool PluginEditor::_rebuildNodes() {
+  auto ids = _processor.getController().getNodeIds();
+  const bool changed = _nodes.size() != ids.size();
+
+  while (_nodes.size() < ids.size()) {
+    auto node = std::make_unique<NodeComponent>();
+    addAndMakeVisible(node.get());
+    _nodes.push_back(std::move(node));
+  }
+  while (_nodes.size() > ids.size())
+    _nodes.pop_back();  // unique_ptr dtor removes the Component from the parent
+
+  for (size_t i = 0; i < _nodes.size(); ++i)
+    _nodes[i]->setLabel("Node " + juce::String(ids[i]));
+
+  return changed;
 }
 
 void PluginEditor::resized() {
   auto area = getLocalBounds();
+  area.removeFromTop(40);
+  area.removeFromBottom(50);
 
-  area.removeFromTop(40);     // title space
-  area.removeFromBottom(50);  // button space
+  auto& controller = _processor.getController();
+  auto ids = controller.getNodeIds();
+  const float halfW = 60.0f, halfH = 60.0f;
+  for (size_t i = 0; i < _nodes.size(); ++i) {
+    auto p = controller.getNodePosition(ids[i]);  // normalised 0..1
+    int cx = area.getX() + static_cast<int>(p.getX() * area.getWidth());
+    int cy = area.getY() + static_cast<int>(p.getY() * area.getHeight());
+    _nodes[i]->setBounds(
+        cx - static_cast<int>(halfW), cy - static_cast<int>(halfH),
+        static_cast<int>(halfW * 2), static_cast<int>(halfH * 2));
+  }
 
-  int eachWidth = area.getWidth() / 3;
-  _node0.setBounds(area.removeFromLeft(eachWidth));
-  _node1.setBounds(area.removeFromLeft(eachWidth));
-  _node2.setBounds(area);
-
-  _startStopButton.setBounds(getWidth() / 2 - 50, getHeight() - 40, 100, 30);
+  // Non-overlapping buttons: [..-110..-10] and [..+10..+110] around centre.
+  _startStopButton.setBounds(getWidth() / 2 - 110, getHeight() - 40, 100, 30);
+  _createChildButton.setBounds(getWidth() / 2 + 10, getHeight() - 40, 100, 30);
 }
 
 void PluginEditor::buttonClicked(juce::Button* b) {
@@ -56,22 +75,26 @@ void PluginEditor::buttonClicked(juce::Button* b) {
       _startStopButton.setButtonText("Stop");
     }
   }
+  if (b == &_createChildButton) {
+    _processor.getController().createChild(0);  // guard removed
+  }
 }
 
 void PluginEditor::timerCallback() {
   if (!_processor.isEngineRunning())
     return;
 
-  auto& engine = _processor.getEngine();
-  auto fired = _processor.popFiredNodes();
+  auto& controller = _processor.getController();
+  controller.updateFromEngine();  // polls events, steps envelopes, syncs freq
 
-  for (unsigned i = 0; i < static_cast<unsigned>(_processor.getNodeCount());
-       ++i) {
-    auto& node = engine.getNode(i);
+  if (_rebuildNodes())
+    resized();  // a node was added/removed → assign its bounds
 
-    _nodes[i]->setAmplitude(std::abs(node.getOutput()) * 0.5);
-    _nodes[i]->setFrequency(engine.getNodeFrequency(i));
-    _nodes[i]->setFiring(fired[i]);
+  auto ids = controller.getNodeIds();
+  for (size_t i = 0; i < _nodes.size(); ++i) {
+    int id = ids[i];
+    _nodes[i]->setFrequency(_processor.getNodeFrequency(id));
+    _nodes[i]->setIntensity(controller.getNodeIntensity(id));
     _nodes[i]->repaint();
   }
 }

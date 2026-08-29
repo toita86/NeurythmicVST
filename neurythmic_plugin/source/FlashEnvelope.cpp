@@ -3,18 +3,19 @@
 #include <algorithm>
 
 namespace neurythmic {
-FlashEnvelope::FlashEnvelope(double sampleRate,
+FlashEnvelope::FlashEnvelope(double frameRate,
                              double attackMs,
                              double decayMs,
                              double curveExpo)
     : _attack(attackMs),
       _decay(decayMs),
       _curve(curveExpo),
-      _sampleRate(sampleRate) {}
+      _frameRate(frameRate) {}
 
 void FlashEnvelope::trigger(double velocity) {
   _velocity = std::clamp(velocity, 0.0, 1.0);
   _state = State::Rising;
+  _currVal = 0.0;
 };
 
 void FlashEnvelope::step() {

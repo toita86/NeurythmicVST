@@ -8,22 +8,20 @@ void NodeComponent::setLabel(const juce::String& label) {
 void NodeComponent::setAmplitude(double amp) {
   _amplitude = amp;
 }
-void NodeComponent::setFiring(bool firing) {
-  if (firing)
-    _lastFireTime = juce::Time::currentTimeMillis();
-  _firing = firing;
+
+void NodeComponent::setIntensity(double intensity) {
+  _intensity = intensity;
 }
+
 void NodeComponent::setFrequency(double hz) {
   _frequency = hz;
 }
 void NodeComponent::paint(juce::Graphics& g) {
-  float radius = 20.0f + (_amplitude * 60.0f);
+  float radius = 20.0f + (static_cast<float>(_intensity) * 20.0f);
 
-  auto msSinceFire = juce::Time::currentTimeMillis() - _lastFireTime;
-  bool flashing = (msSinceFire < 150);
-
-  juce::Colour colour = flashing ? juce::Colours::yellow.brighter(0.5f)
-                                 : juce::Colour(40, 100, 180);
+  juce::Colour base(40, 100, 180);
+  juce::Colour colour = base.interpolatedWith(
+      juce::Colours::yellow.brighter(0.5f), static_cast<float>(_intensity));
 
   g.setColour(colour);
   g.fillEllipse(_centerX - radius, _centerY - radius, radius * 2.0f,

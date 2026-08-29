@@ -1,6 +1,8 @@
 #pragma once
 
 #include <array>
+#include <memory>
+#include <vector>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "NodeComponent.h"
 #include "PluginProcessor.h"
@@ -34,9 +36,9 @@ public:
 private:
   PluginProcessor& _processor;  // read-only access to engine state
   juce::TextButton _startStopButton;
-  NodeComponent _node0;
-  NodeComponent _node1;
-  NodeComponent _node2;
-  std::array<NodeComponent*, 3> _nodes{};
+  juce::TextButton _createChildButton;
+  std::vector<std::unique_ptr<NodeComponent>> _nodes;
+
+  bool _rebuildNodes();
 };
 }  // namespace neurythmic

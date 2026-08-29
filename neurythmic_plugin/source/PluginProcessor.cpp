@@ -10,9 +10,10 @@ PluginProcessor::PluginProcessor()
           BusesProperties().withOutput("Output",
                                        juce::AudioChannelSet::stereo(),
                                        true)),
-      _engine(44100) {
-  // Using the ConfigManager to setup the Matshuoka Engines
+      _engine(44100),
+      _controller(_engine, ConfigManager::get()) {
   auto& cfg = ConfigManager::get();
+  _engine.setParam_t2Overt1(cfg.t1Overt2);
   _engine.setParam_c(cfg.c);
   _engine.setParam_b(cfg.b);
   _engine.setParam_g(cfg.g);
@@ -23,8 +24,6 @@ PluginProcessor::PluginProcessor()
                                     cfg.getWeightScalingCurveY());
   _engine.doQueuedActions();
   _engine.calibrate();
-
-  _setupNetwork();
 }
 
 PluginProcessor::~PluginProcessor() = default;
@@ -84,15 +83,8 @@ void PluginProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
   if (_running) {
     _engine.doQueuedActions();
-
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
       _engine.step();
-
-    auto events = _engine.getEvents();
-    for (auto& e : events) {
-      if (e.nodeID < 16)
-        _nodeFired[e.nodeID] = true;
-    }
   }
 
   auto totalNumInputChannels = getTotalNumInputChannels();
@@ -111,15 +103,8 @@ void PluginProcessor::processBlock(juce::AudioBuffer<double>& buffer,
 
   if (_running) {
     _engine.doQueuedActions();
-
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
       _engine.step();
-
-    auto events = _engine.getEvents();
-    for (auto& e : events) {
-      if (e.nodeID < 16)
-        _nodeFired[e.nodeID] = true;
-    }
   }
 
   auto totalNumInputChannels = getTotalNumInputChannels();
@@ -146,12 +131,6 @@ bool PluginProcessor::hasEditor() const {
   return true;
 }
 
-std::array<bool, 16> PluginProcessor::popFiredNodes() {
-  auto copy = _nodeFired;
-  _nodeFired.fill(false);
-  return copy;
-}
-
 // Getters exposed for the editor
 int PluginProcessor::getNodeCount() const {
   return _engine.getNodeList().size();
@@ -173,28 +152,6 @@ void PluginProcessor::startEngine() {
 }
 void PluginProcessor::stopEngine() {
   _running = false;
-}
-
-// PRIVATE
-void PluginProcessor::_setupNetwork() {
-  _engine.addChild(0, 1);     // node 1 is child of root
-  _engine.addChild(0, 2);     // node 2 is child of root
-  _engine.doQueuedActions();  // <-- THIS applies the additions
-  /*
-  addChild is a QUEUED ACTION. Until doQueuedActions(), the network still has
-  only node 0. After, it has 3 nodes. doQueuedActions() is the gate.
-  */
-
-  _engine.setNodeFrequency(0, 2.0, false);
-  _engine.setNodeFrequency(1, 2.7, false);
-  _engine.setNodeFrequency(2, 3.3, false);
-  _engine.setConnection(0, 1, 0.5);
-  _engine.setConnection(0, 2, 0.25);
-
-  // _engine.setNodeQuantiser_Grid(1, MatsuokaEngine::gridType::_24th);
-  // _engine.setNodeQuantiser_Grid(2, MatsuokaEngine::gridType::_24th);
-
-  _engine.doQueuedActions();
 }
 
 }  // namespace neurythmic

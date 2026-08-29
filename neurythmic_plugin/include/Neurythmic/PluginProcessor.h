@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "MatsuokaEngine.h"
+#include "NetworkController.h"
 
 namespace neurythmic {
 
@@ -47,16 +48,15 @@ public:
   bool isEngineRunning() const;
   void startEngine();
   void stopEngine();
+  NetworkController& getController() { return _controller; }
   const MatsuokaEngine& getEngine() const { return _engine; }
 
 private:
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginProcessor)
 
   MatsuokaEngine _engine;
+  NetworkController _controller;  // MUST Be declared fter engine
   bool _running = true;
-  std::array<bool, 16> _nodeFired{};
-
-  void _setupNetwork();
 };
 
 }  // namespace neurythmic
