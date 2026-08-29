@@ -2,6 +2,7 @@
 #include <juce_core/juce_core.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Neurythmic/Neurythmic.h"
+#include "MatsuokaEngine.h"
 
 TEST(NeurythmicPlugin, PluginCanBeCreated) {
   neurythmic::PluginProcessor processor;
@@ -288,4 +289,89 @@ TEST(FlashEnvelope, ReturnsToIdleAfterFullDecay) {
     env.step();  // ≫ (50+500)ms × 30Hz
   EXPECT_FALSE(env.getChanged());
   EXPECT_DOUBLE_EQ(env.getValue(), 0.0);
+}
+
+// NETWORK CONTROLLER TESTS
+
+TEST(NetworkController, StartsWithSingleRoot) {
+  MatsuokaEngine engine(44100);
+  neurythmic::NetworkController ctrl(engine, neurythmic::ConfigManager::get());
+  EXPECT_EQ(ctrl.getNodeCount(), 1);
+  EXPECT_EQ(engine.getNodeList().size(), 1u);
+}
+
+TEST(NetworkController, CreateChildAddsToTreeAndEngine) {
+  MatsuokaEngine engine(44100);
+  neurythmic::NetworkController ctrl(engine, neurythmic::ConfigManager::get());
+  int child = ctrl.createChild(0);
+  EXPECT_EQ(child, 1);
+  EXPECT_EQ(ctrl.getNodeCount(), 2);
+  EXPECT_TRUE(engine.nodeExists(1));
+
+  auto n1 = neurythmic::NetworkState::getNode(ctrl.getTree(), 1);
+  EXPECT_TRUE(
+      n1.getChildWithProperty(neurythmic::NetworkState::Props::sourceId, 0)
+          .isValid());
+}
+
+TEST(NetworkController, DeleteLeafNode) {
+  MatsuokaEngine engine(44100);
+  neurythmic::NetworkController ctrl(engine, neurythmic::ConfigManager::get());
+  ctrl.createChild(0);
+  ctrl.deleteNode(1);
+  EXPECT_EQ(ctrl.getNodeCount(), 1);
+  EXPECT_FALSE(engine.nodeExists(1));
+}
+
+TEST(NetworkController, RefusesDeleteOfRootAndInterior) {
+  MatsuokaEngine engine(44100);
+  neurythmic::NetworkController ctrl(engine, neurythmic::ConfigManager::get());
+  EXPECT_THROW(ctrl.deleteNode(0), std::runtime_error);
+  ctrl.createChild(0);  // node 1
+  ctrl.createChild(1);  // node 2 (child of 1)
+  EXPECT_THROW(ctrl.deleteNode(1), std::runtime_error);
+}
+
+TEST(NetworkController, ConnectionsRoundTrip) {
+  MatsuokaEngine engine(44100);
+  neurythmic::NetworkController ctrl(engine, neurythmic::ConfigManager::get());
+  ctrl.createChild(0);  // 1
+  ctrl.createChild(0);  // 2
+  ctrl.addConnection(1, 2);
+  auto n2 = neurythmic::NetworkState::getNode(ctrl.getTree(), 2);
+  EXPECT_TRUE(
+      n2.getChildWithProperty(neurythmic::NetworkState::Props::sourceId, 1)
+          .isValid());
+  ctrl.removeConnection(1, 2);
+  EXPECT_FALSE(
+      n2.getChildWithProperty(neurythmic::NetworkState::Props::sourceId, 1)
+          .isValid());
+}
+
+TEST(NetworkController, CalcWeightIsBounded) {
+  MatsuokaEngine engine(44100);
+  neurythmic::NetworkController ctrl(engine, neurythmic::ConfigManager::get());
+  EXPECT_DOUBLE_EQ(ctrl.calcWeight(0, 0, 1.0), 1.0);  // distance 0 -> scale
+  EXPECT_DOUBLE_EQ(ctrl.calcWeight(0, 0, 0.5), 0.5);
+}
+
+TEST(NetworkController, HitTestAndFocus) {
+  MatsuokaEngine engine(44100);
+  neurythmic::NetworkController ctrl(engine, neurythmic::ConfigManager::get());
+  EXPECT_EQ(ctrl.isNodeAtPoint(ctrl.getNodePosition(0)), 0);
+
+  neurythmic::NetworkController::Focus f;
+  f.nodeId = 0;
+  ctrl.setFocus(f);
+  EXPECT_EQ(ctrl.getFocus().nodeId, 0);
+  ctrl.clearFocus();
+  EXPECT_EQ(ctrl.getFocus().nodeId, -1);
+}
+
+TEST(NetworkController, UpdateFromEngineRuns) {
+  MatsuokaEngine engine(44100);
+  neurythmic::NetworkController ctrl(engine, neurythmic::ConfigManager::get());
+  for (int i = 0; i < 100; ++i)
+    engine.step();
+  EXPECT_NO_THROW(ctrl.updateFromEngine());
 }

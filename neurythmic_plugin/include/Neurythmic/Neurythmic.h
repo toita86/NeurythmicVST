@@ -6,3 +6,4 @@
 #include "NodeComponent.h"
 #include "NetworkState.h"
 #include "FlashEnvelope.h"
+#include "NetworkController.h"
