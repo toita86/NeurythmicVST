@@ -11,3 +11,4 @@
 #include "source/NetworkState.cpp"
 #include "source/FlashEnvelope.cpp"
 #include "source/NetworkController.cpp"
+#include "source/PresetManager.cpp"

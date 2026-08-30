@@ -88,6 +88,11 @@ public:
   int getNodeCount() const;
   juce::Point<float> getNodePosition(int nodeId) const;
 
+  // Replaces the whole network from a ValueTree (preset load):
+  // clears the engine, re-adds nodes parent-before-child,
+  // restores connections and parameters.
+  void rebuild(const juce::ValueTree& newRoot);
+
 private:
   MatsuokaEngine& _engine;
   ConfigManager& _config;

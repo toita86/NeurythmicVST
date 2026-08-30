@@ -25,6 +25,7 @@ add_executable(NeurythmicTests
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NetworkState.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/FlashEnvelope.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NetworkController.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PresetManager.cpp
 )
 
 target_include_directories(NeurythmicTests PRIVATE

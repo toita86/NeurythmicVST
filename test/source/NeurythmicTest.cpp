@@ -375,3 +375,32 @@ TEST(NetworkController, UpdateFromEngineRuns) {
     engine.step();
   EXPECT_NO_THROW(ctrl.updateFromEngine());
 }
+
+// PRESET MANAGER TESTS
+
+TEST(PresetManager, SaveLoadRoundTrip) {
+  MatsuokaEngine engine(44100);
+  neurythmic::NetworkController ctrl(engine, neurythmic::ConfigManager::get());
+  ctrl.createChild(0);  // 1
+  ctrl.createChild(0);  // 2
+  ctrl.addConnection(1, 2);
+
+  neurythmic::PresetManager presets(ctrl);
+  auto tmp = juce::File::createTempFile(".nprs");
+  ASSERT_TRUE(presets.savePreset(tmp));
+
+  ctrl.clear();
+  EXPECT_EQ(ctrl.getNodeCount(), 1);
+
+  ASSERT_TRUE(presets.loadPreset(tmp));
+  EXPECT_EQ(ctrl.getNodeCount(), 3);
+  EXPECT_TRUE(engine.nodeExists(1));
+  EXPECT_TRUE(engine.nodeExists(2));
+
+  auto n2 = neurythmic::NetworkState::getNode(ctrl.getTree(), 2);
+  EXPECT_TRUE(
+      n2.getChildWithProperty(neurythmic::NetworkState::Props::sourceId, 1)
+          .isValid());
+
+  tmp.deleteFile();
+}

@@ -1,6 +1,7 @@
 #include "../include/Neurythmic/NetworkController.h"
 
 #include <cmath>
+#include <algorithm>
 #include <stdexcept>
 
 namespace neurythmic {
@@ -124,6 +125,86 @@ void NetworkController::clear() {
                    nullptr);
   _engine.clear();
   _engine.doQueuedActions();
+}
+
+// preset loading --------------------------------------------------------------
+void NetworkController::rebuild(const juce::ValueTree& newRoot) {
+  using namespace NetworkState;
+
+  _engine.clear();  // back to single root (defaults)
+  _engine.doQueuedActions();
+
+  // Restore root frequency.
+  juce::ValueTree root = getNode(newRoot, kRootNodeId);
+  double rootFreq = static_cast<double>(root.getProperty(Props::freq));
+  _engine.setNodeFrequency(0, rootFreq, false);
+
+  // Topological add: parents before children (root already present).
+  std::vector<juce::ValueTree> pending;
+  forEachNode(newRoot, [&](juce::ValueTree n) {
+    int id = static_cast<int>(n.getProperty(Props::id));
+    if (id != kRootNodeId)
+      pending.push_back(n);
+  });
+
+  std::vector<int> added{kRootNodeId};
+  while (!pending.empty()) {
+    bool progress = false;
+    for (auto it = pending.begin(); it != pending.end();) {
+      int parent = static_cast<int>(it->getProperty(Props::parentId));
+      bool parentReady =
+          std::find(added.begin(), added.end(), parent) != added.end();
+      if (parentReady) {
+        int id = static_cast<int>(it->getProperty(Props::id));
+        double freq = static_cast<double>(it->getProperty(Props::freq));
+        juce::ValueTree pc = it->getChildWithProperty(Props::sourceId, parent);
+        double weight = pc.isValid()
+                            ? static_cast<double>(pc.getProperty(Props::weight))
+                            : _config.newParentChildConnWeightScale;
+        _engine.addChild(parent, id);
+        _engine.setNodeFrequency(id, freq, false);
+        _engine.setConnection(parent, id, weight);
+        added.push_back(id);
+        it = pending.erase(it);
+        progress = true;
+      } else {
+        ++it;
+      }
+    }
+    if (!progress)
+      throw std::runtime_error("preset has an orphaned node (missing parent)");
+  }
+
+  // Restore non-parent connections (the parent edge was handled above).
+  forEachNode(newRoot, [&](juce::ValueTree n) {
+    int id = static_cast<int>(n.getProperty(Props::id));
+    int parent = static_cast<int>(n.getProperty(Props::parentId));
+    forEachConnection(n, [&](juce::ValueTree conn) {
+      int source = static_cast<int>(conn.getProperty(Props::sourceId));
+      if (source == parent)
+        return;
+      double weight = static_cast<double>(conn.getProperty(Props::weight));
+      double phase = static_cast<double>(conn.getProperty(Props::phase));
+      _engine.setConnection(source, id, weight);
+      _engine.setConnectionPhaseOffset(source, id, phase);
+    });
+  });
+
+  // Restore per-node parameters.
+  forEachNode(newRoot, [&](juce::ValueTree n) {
+    int id = static_cast<int>(n.getProperty(Props::id));
+    _engine.setNodePhaseOffset(
+        id, static_cast<double>(n.getProperty(Props::phaseOffset)));
+    _engine.setNodeSelfNoise(id,
+                             static_cast<double>(n.getProperty(Props::noise)));
+    _engine.setNodeSynchMode(
+        id, static_cast<MatsuNode::synchMode>(
+                static_cast<int>(n.getProperty(Props::synchMode))));
+  });
+
+  _engine.doQueuedActions();
+
+  _network = newRoot.createCopy();  // controller owns a deep copy
 }
 
 // connection lifecycle -------------------------------------------------
