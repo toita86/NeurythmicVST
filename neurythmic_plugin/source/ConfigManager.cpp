@@ -85,6 +85,8 @@ ConfigManager::ConfigManager()
       connectionWeightMax(_connectionWeightMax),
       connectionWeightScalingOn(_connectionWeightScalingOn),
       connectionWeightScalingUnity(_connectionWeightScalingUnity),
+      midiTriggerNote(_midiTriggerNote),
+      midiDrumChannel(_midiDrumChannel),
       nodeClickableRadius(_nodeClickableRadius),
       nodeCollideDistance(_nodeCollideDistance),
       nodeSpawnDistance(_nodeSpawnDistance),
@@ -213,6 +215,12 @@ ConfigManager::ConfigManager()
     _connectionWeightScalingUnity =
         getFloat(behaviour, "connectionWeightScalingUnity",
                  _connectionWeightScalingUnity);
+  }
+
+  // MIDI.
+  if (auto* midi = root->getChildByName("MIDI")) {
+    _midiTriggerNote = getInt(midi, "midiTriggerNote", _midiTriggerNote);
+    _midiDrumChannel = getInt(midi, "midiDrumChannel", _midiDrumChannel);
   }
 
   // CPG_layout.

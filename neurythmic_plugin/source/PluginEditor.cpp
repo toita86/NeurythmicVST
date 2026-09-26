@@ -3,10 +3,7 @@
 namespace neurythmic {
 PluginEditor::PluginEditor(PluginProcessor& p)
     : AudioProcessorEditor(p), _processor(p) {
-  addAndMakeVisible(_startStopButton);
   addAndMakeVisible(_createChildButton);
-  _startStopButton.setButtonText("Stop");
-  _startStopButton.addListener(this);
   _createChildButton.setButtonText("add child");
   _createChildButton.addListener(this);
   setSize(600, 400);
@@ -60,28 +57,18 @@ void PluginEditor::resized() {
         static_cast<int>(halfW * 2), static_cast<int>(halfH * 2));
   }
 
-  // Non-overlapping buttons: [..-110..-10] and [..+10..+110] around centre.
-  _startStopButton.setBounds(getWidth() / 2 - 110, getHeight() - 40, 100, 30);
-  _createChildButton.setBounds(getWidth() / 2 + 10, getHeight() - 40, 100, 30);
+  // Non-overlapping buttons: the single create-child button near centre-bottom.
+  _createChildButton.setBounds(getWidth() / 2 - 50, getHeight() - 40, 100, 30);
 }
 
 void PluginEditor::buttonClicked(juce::Button* b) {
-  if (b == &_startStopButton) {
-    if (_processor.isEngineRunning()) {
-      _processor.stopEngine();
-      _startStopButton.setButtonText("Start");
-    } else {
-      _processor.startEngine();
-      _startStopButton.setButtonText("Stop");
-    }
-  }
   if (b == &_createChildButton) {
     _processor.getController().createChild(0);  // guard removed
   }
 }
 
 void PluginEditor::timerCallback() {
-  if (!_processor.isEngineRunning())
+  if (!_processor.isPlaying())
     return;
 
   auto& controller = _processor.getController();

@@ -17,7 +17,9 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
 # Plugin tests (compile processor directly, link only audio modules)
 add_executable(NeurythmicTests
+  source/main.cpp
   source/NeurythmicTest.cpp
+  source/MidiOutputTest.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginProcessor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginEditor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/ConfigManager.cpp
@@ -26,6 +28,8 @@ add_executable(NeurythmicTests
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/FlashEnvelope.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NetworkController.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PresetManager.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/MidiOutput.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/TempoSource.cpp
 )
 
 target_include_directories(NeurythmicTests PRIVATE
@@ -40,7 +44,7 @@ target_link_libraries(NeurythmicTests
     juce::juce_audio_devices
     MatsuokaEngine
     neurythmic::neurythmic_plugin_assets
-    GTest::gtest_main
+    GTest::gtest
 )
 
 target_compile_definitions(NeurythmicTests PRIVATE

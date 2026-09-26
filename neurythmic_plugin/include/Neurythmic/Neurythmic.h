@@ -8,3 +8,5 @@
 #include "FlashEnvelope.h"
 #include "NetworkController.h"
 #include "PresetManager.h"
+#include "MidiOutput.h"
+#include "TempoSource.h"

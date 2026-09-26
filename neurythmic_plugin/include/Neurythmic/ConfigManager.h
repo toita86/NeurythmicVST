@@ -56,6 +56,10 @@ public:
   const bool& connectionWeightScalingOn;
   const float& connectionWeightScalingUnity;
 
+  //  MIDI routing
+  const int& midiTriggerNote;
+  const int& midiDrumChannel;
+
   // Note (open point): the connection-weight scaling curve is a
   // calibration table tied to the oscillator equation tuning (t1Overt2, c, b,
   // g). It compensates for the entrainment threshold depending on the
@@ -159,6 +163,10 @@ private:
   float _connectionWeightMax = 10.0f;
   bool _connectionWeightScalingOn = true;
   float _connectionWeightScalingUnity = 3.0f;
+
+  //  MIDI routing
+  int _midiTriggerNote = 60;
+  int _midiDrumChannel = 10;
 
   //  CPG layout: interaction geometry
   float _nodeClickableRadius = 0.035f;

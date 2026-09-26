@@ -35,7 +35,6 @@ public:
 
 private:
   PluginProcessor& _processor;  // read-only access to engine state
-  juce::TextButton _startStopButton;
   juce::TextButton _createChildButton;
   std::vector<std::unique_ptr<NodeComponent>> _nodes;
 

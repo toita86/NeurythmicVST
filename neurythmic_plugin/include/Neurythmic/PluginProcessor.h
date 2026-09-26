@@ -1,8 +1,12 @@
 #pragma once
 
+#include <atomic>
+
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "MatsuokaEngine.h"
+#include "MidiOutput.h"
 #include "NetworkController.h"
+#include "TempoSource.h"
 
 namespace neurythmic {
 
@@ -39,24 +43,33 @@ public:
   void getStateInformation(juce::MemoryBlock& destData) override;
   void setStateInformation(const void* data, int sizeInBytes) override;
 
-  std::array<bool, 16> popFiredNodes();
+  // Phase 2 API
+  juce::AudioProcessorValueTreeState& getAPVTS() { return _apvts; }
+  void setTempoSource(TempoSource* source);  // test seam
+  bool isPlaying() const;                    // last known transport state
+
   // Getters exposed for the editor
-  int getNodeCount() const;
-  int getNodeSignalState(u_int id) const;
-  double getNodeOutput(u_int id) const;
-  double getNodeFrequency(u_int id) const;
-  bool isEngineRunning() const;
-  void startEngine();
-  void stopEngine();
+  double getNodeFrequency(unsigned id) const;
   NetworkController& getController() { return _controller; }
   const MatsuokaEngine& getEngine() const { return _engine; }
 
 private:
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PluginProcessor)
 
+  static juce::AudioProcessorValueTreeState::ParameterLayout
+  createParameterLayout();
+  void process(juce::MidiBuffer& midiMessages, int numSamples);
+
   MatsuokaEngine _engine;
-  NetworkController _controller;  // MUST Be declared fter engine
-  bool _running = true;
+  NetworkController _controller;  // MUST be declared after engine
+  MidiOutput _midiOutput;
+  juce::AudioProcessorValueTreeState _apvts;
+
+  PlayheadTempoSource _defaultTempoSource;
+  TempoSource* _tempoSource;
+  TempoInfo _lastTempo;
+  int _currentSample = 0;
+  std::atomic<bool> _midiResetRequested{false};
 };
 
 }  // namespace neurythmic

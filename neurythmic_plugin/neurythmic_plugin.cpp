@@ -12,3 +12,5 @@
 #include "source/FlashEnvelope.cpp"
 #include "source/NetworkController.cpp"
 #include "source/PresetManager.cpp"
+#include "source/MidiOutput.cpp"
+#include "source/TempoSource.cpp"
