@@ -8,8 +8,6 @@ A standalone JUCE application uses the engine.
 Users can create or manipulate a small CPG network.
 The application outputs useful MIDI.
 A network/preset can be saved and restored.
-The app runs on the selected tablet.
-A pilot study is completed.
 The final study and report are completed.
 
 ## Should have
