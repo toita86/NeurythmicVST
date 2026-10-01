@@ -401,6 +401,53 @@ TEST(NetworkController, UpdateFromEngineRuns) {
   EXPECT_NO_THROW(ctrl.updateFromEngine());
 }
 
+// NETWORK VIEW (software render) TESTS
+
+TEST(NetworkView, RendersNonBackgroundPixels) {
+  MatsuokaEngine engine(44100);
+  neurythmic::NetworkController ctrl(engine, neurythmic::ConfigManager::get());
+  ctrl.createChild(0);  // node 1
+  ctrl.createChild(0);  // node 2
+
+  neurythmic::NetworkViewComponent view(ctrl);
+  view.setSize(500, 500);
+
+  juce::Image image(juce::Image::ARGB, 500, 500, true);
+  {
+    juce::Graphics g(image);
+    view.paint(g);
+  }
+
+  int nonBackground = 0;
+  for (int y = 0; y < 500; ++y)
+    for (int x = 0; x < 500; ++x) {
+      const juce::Colour c = image.getPixelAt(x, y);
+      if (c.getRed() > 40 || c.getGreen() > 40 || c.getBlue() > 45)
+        ++nonBackground;
+    }
+  EXPECT_GT(nonBackground, 0);
+}
+
+TEST(NetworkView, BackgroundIsOpaqueDark) {
+  MatsuokaEngine engine(44100);
+  neurythmic::NetworkController ctrl(engine, neurythmic::ConfigManager::get());
+
+  neurythmic::NetworkViewComponent view(ctrl);
+  view.setSize(500, 500);
+
+  juce::Image image(juce::Image::ARGB, 500, 500, true);
+  {
+    juce::Graphics g(image);
+    view.paint(g);
+  }
+
+  // A corner pixel should be the background colour (25, 25, 30), not black.
+  const juce::Colour c = image.getPixelAt(0, 0);
+  EXPECT_EQ(c.getRed(), 25);
+  EXPECT_EQ(c.getGreen(), 25);
+  EXPECT_EQ(c.getBlue(), 30);
+}
+
 // PRESET MANAGER TESTS
 
 TEST(PresetManager, SaveLoadRoundTrip) {

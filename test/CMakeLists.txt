@@ -31,7 +31,6 @@ add_executable(NeurythmicTests
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/MidiOutput.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/TempoSource.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/GraphGeometry.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NodeLabelOverlay.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NetworkViewComponent.cpp
 )
 
@@ -45,7 +44,6 @@ target_link_libraries(NeurythmicTests
     juce::juce_audio_processors
     juce::juce_audio_utils
     juce::juce_audio_devices
-    juce::juce_opengl
     MatsuokaEngine
     neurythmic::neurythmic_plugin_assets
     GTest::gtest

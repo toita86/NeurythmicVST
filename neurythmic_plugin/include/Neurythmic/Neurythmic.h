@@ -10,5 +10,4 @@
 #include "MidiOutput.h"
 #include "TempoSource.h"
 #include "GraphGeometry.h"
-#include "NodeLabelOverlay.h"
 #include "NetworkViewComponent.h"

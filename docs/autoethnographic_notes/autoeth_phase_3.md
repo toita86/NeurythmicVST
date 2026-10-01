@@ -5,7 +5,10 @@ AE-2026-10-01-1
 - Roadmap phase: Phase 3 — Graph Visualization
 - Development task: OpenGL network graph renderer (nodes, parent-child straight
   edges, curved input edges, arrowheads, dashed zero-weight edges, node labels)
-- Duration: one session (discussion + test-first implementation)
+- Duration:
+    - time: 3 hours 
+    - usage: 54.7 M tokens
+    - cost: 2.44$
 - Agent and model: opencode / deepseek-v4-pro
 - Repository branch: main
 
@@ -58,6 +61,20 @@ NetworkController's; and `"Neurythmic/…"` include paths resolve only in the te
 target (the plugin build requires the relative `../include/Neurythmic/…` form).
 The deprecated `juce::Font` constructors were replaced with `FontOptions`. 
 
+A rendering pivot followed. The OpenGL graph rendered correctly into its back
+buffer — a framebuffer readback after the draw calls reported ~10,000
+non-background pixels and a bright node colour — yet the plugin window stayed
+blank. That isolated the failure to the JUCE-on-Linux X11 GL child window, which
+was not being composited onto the screen (the software-drawn "add child" button
+was visible, so only the GL layer was affected). Rather than keep chasing an
+environment-specific compositor issue, the researcher chose to re-implement the
+renderer in pure `juce::Graphics`. The GL layer (`OpenGLContext`, VBO/VAO, the
+five shaders, the `NodeLabelOverlay` child) was removed; `NetworkViewComponent`
+became a plain `juce::Component` drawing nodes/edges/arrows/labels in `paint()`.
+`GraphGeometry`, `NetworkController`'s accessors and all their tests were kept
+unchanged, and two headless `juce::Image` render smoke tests were added
+(98 tests passing).
+
 ## Immediate researcher reflection
 - What did I expect? A straightforward port of the legacy GraphVis math and
   shaders into a JUCE OpenGL component.
@@ -75,9 +92,25 @@ The deprecated `juce::Font` constructors were replaced with `FontOptions`.
   unit-tested and the build is clean, but the GL draw/shader compilation path is
   not headless-testable and needs manual host verification.
 
-This attempt took multiple debuggin steps but there is pivot from OpenGL, given 
-compatibility and issues deriving out of it. This emegerged during the agent assisted
-debuging session. 
+This attempt took multiple debugging steps but there is a pivot from OpenGL, given 
+compatibility and issues deriving out of it. 
+I already had in mind that this will happen, but I wanted to see if the model could
+make it work.
+This emegerged during the agent assisted debuging session. 
+
+Why the pivot to `juce::Graphics`:
+- Distribution robustness: OpenGL carries driver/context/Wayland/macOS-deprecation
+  fragility; `juce::Graphics` has none and is what most commercial JUCE plugins
+  use for their UI.
+- Performance is a non-issue at ≤16 nodes / ≤15 edges; the legacy app used
+  OpenGL because openFrameworks is GL-based, not because this workload needs it.
+- Everything required (thick lines, arcs, dashes, arrowheads, labels) is
+  reproducible in `juce::Graphics` at ~95% visual fidelity
+- It aligns with the my own principle (faithful UI, JUCE-native
+  backend) and makes the renderer headlessly unit-testable — coverage OpenGL
+  could never give.
+- The pivot was data-driven, not speculative: the framebuffer readback proved the
+  GL pipeline worked, isolating the failure to the X11 window compositing.
 
 
 ## Agent-generated prompts and researcher answers
@@ -88,6 +121,9 @@ debuging session.
 - Agent: "How to rebuild geometry each frame?" Researcher: rebuild all.
 - Agent: "How to map normalized coordinates to a non-square window?" Researcher:
   make it 500×500.
+- Agent: "Is OpenGL worth it for the plugin and its distribution, or should the
+  rendering be re-implemented in JUCE?" Researcher: re-implement in pure
+  `juce::Graphics` (drop OpenGL).
 
 ## Provisional codes
 - AI-assisted reverse engineering

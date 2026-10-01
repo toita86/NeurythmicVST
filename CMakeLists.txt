@@ -129,11 +129,6 @@ juce_add_binary_data(neurythmic_plugin_assets
     assets/Inter-Medium.ttf
     assets/settings.xml
     assets/scalingCurve.txt
-    assets/shaders/dotted_vert.glsl
-    assets/shaders/dotted_geom.glsl
-    assets/shaders/dotted_frag.glsl
-    assets/shaders/flat_vert.glsl
-    assets/shaders/flat_frag.glsl
 )
 
 add_library(neurythmic::neurythmic_plugin_assets ALIAS neurythmic_plugin_assets)
@@ -153,7 +148,7 @@ target_link_libraries(neurythmic_plugin INTERFACE neurythmic::neurythmic_plugin_
 
 target_link_libraries(neurythmic_plugin INTERFACE MatsuokaEngine)
 
-target_link_libraries(neurythmic_plugin INTERFACE juce::juce_audio_utils juce::juce_audio_devices juce::juce_opengl)
+target_link_libraries(neurythmic_plugin INTERFACE juce::juce_audio_utils juce::juce_audio_devices)
 
 target_link_libraries(
   NeurythmicPlugin

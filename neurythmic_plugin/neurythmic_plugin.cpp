@@ -14,5 +14,4 @@
 #include "source/MidiOutput.cpp"
 #include "source/TempoSource.cpp"
 #include "source/GraphGeometry.cpp"
-#include "source/NodeLabelOverlay.cpp"
 #include "source/NetworkViewComponent.cpp"

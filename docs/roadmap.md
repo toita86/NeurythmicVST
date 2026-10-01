@@ -24,7 +24,7 @@ PluginEditor (GUI thread)
 |----------|--------|-----------|
 | Undo/Redo | Maybe (deferred) | Nice-to-have, not core to functionality |
 | Build targets | VST3 + AU only (no Standalone) | Primary use case is DAW plugin |
-| Rendering backend | OpenGL | Keep geometry shader approach from matsuoka_frontend |
+| Rendering backend | Software (`juce::Graphics`) | Cross-platform, no GL context/driver fragility; graph is ≤16 nodes so CPU rendering is trivial |
 | Audio output | MIDI-only | No internal synthesis; drives external VST samplers/synths |
 | MAX/MSP dependency | Removed | Engine runs locally via CPGLib |
 
@@ -155,83 +155,62 @@ Expose via `juce::AudioProcessorValueTreeState`:
 ## Phase 3 — Graph Visualization
 **Goal:** The network graph renders interactively in the plugin window.
 
-### 3.1 OpenGL Rendering Setup
+### 3.1 Rendering Setup
 
-- `juce::OpenGLContext` attached to main component (`NetworkViewComponent`)
-- Enable `juce::juce_opengl`; embed `dotted_vert/geom/frag.glsl` via `juce_add_binary_data`
-- Render straight to the back buffer — the legacy offscreen FBO was a redundant 1:1 blit (no post-processing), so it is dropped
-- `continuousRepainting = false` — only redraw on change via `repaint()`
-- Editor window set to 500×500 so the legacy `windowMinDim` normalised-coordinate mapping stays faithful
+- `NetworkViewComponent` (`juce::Component`) draws the whole graph in its
+  `paint(juce::Graphics&)` — no OpenGL context, no shaders.
+- Repaint is driven by the editor's 30 Hz timer (flash animation); `repaint()`
+  on change.
+- Editor window set to 500×500 so the legacy `windowMinDim` normalised-coordinate
+  mapping stays faithful (`scaling = min(1, minDim/1000)`).
 
 ### 3.2 Node Rendering
 
-- Circle meshes: `nodeRadius` (34px default), `pointsInCircle` (30) vertices
-- Color palette: 10 named colors cycling by node index (from settings.xml)
-- Vertex data: `GL_LINE_STRIP_ADJACENCY` for geometry shader thick lines
-- Brightness: scaled by `FlashEnvelope::getValue() * velocity` between `intensityFloor` (0.7) and 1.0
-- Root node: additional larger "halo" circle at `node0HaloSize` (1.35x) multiplier
+- `g.drawEllipse` for each node; root gets an additional larger "halo" circle at
+  `node0HaloSize` (1.35x).
+- Color palette: 10 named colors cycling by node index (from settings.xml).
+- Brightness: `getNodeBrightness(intensity)` between `intensityFloor` (0.7) and 1.0.
+- Line thickness: `getNodeSpread(intensity)` (node flash → line weight).
 
 ### 3.3 Connection Rendering
 
-- **Parent-child edges**: straight lines from circumference to circumference
-  - Project endpoints via `projectToCircumference()` at `nodeRadius * node0HaloSize`
-- **Input edges** (non-parent): curved arcs with perpendicular offset from chord
-  - Arc center: perpendicular to midpoint, offset = `defaultCurveAmount * (distance² * 0.2 / 1200)`
-- **Arrow heads**: triangle mesh at target end, oriented to line/arc tangent
-  - Size: `arrowHeadSize` (12px), width scaled by line weight
-- **Dotted lines**: zero-weight connections rendered as dashed via fragment shader
-- **Color**: `lightGrey.lerp(connColour, weight/maxWeight)` — grey to orange
-- **Selection highlight**: green when connection is selected
-- Line thickness: mapped from weight via `minLineThickness` (1px) to `maxLineThickness` (8px)
+- **Parent-child edges**: `g.drawLine` between `projectToCircumference()` points
+  (at `nodeRadius * node0HaloSize`), thickness `getLineWidth(weight)`.
+- **Input edges** (non-parent): curved arcs — `makeInputEdge()` + `makeArc()`
+  points built into a `juce::Path`, stroked with `PathStrokeType`.
+- **Arrow heads**: `makeArrowHead()` triangle filled via `juce::Path`.
+- **Dotted lines**: zero-weight connections stroked with
+  `PathStrokeType::createDashedStroke`.
+- **Color**: `lightGrey.lerp(connColour, colourScale)` — grey to orange.
+- Line thickness: mapped from weight via `minLineThickness` to `maxLineThickness`.
 
 ### 3.4 Node Labels
 
-- Above node: frequency multiple label (e.g. "0.5", "2", "8") in Inter font
-- Below node: bar division label (quantise grid resolution)
-- Drawn by a software `NodeLabelOverlayComponent` (transparent child of
-  `NetworkViewComponent`, `juce::Graphics`) on top of the GL layer — text stays
-  JUCE-native rather than being baked into glyph meshes
+- Above node: frequency multiple label (e.g. "0.5", "2", "8") in Inter font.
+- Below node: bar division label (quantise grid resolution).
+- Drawn in the same `paint()` pass with `g.drawText` — JUCE-native text, no
+  glyph meshes.
 - Frequency multiple = `freq / rootFreq`, snapped to the legacy display
-  increments; bar division read from `engine.getNodeQuantiser_BarDivision()`
+  increments; bar division read from `engine.getNodeQuantiser_BarDivision()`.
 
-### 3.5 GraphVis Port — Geometry + Mesh Store
+### 3.5 GraphVis Port — Geometry
 
-```cpp
-struct MeshObject {
-    enum Type { ParentChildEdge, InputEdge, RootNode, ChildNode };
-    Type type;
-    int id;
-    juce::OpenGLShaderProgram::Attribute* position;
-    // Hit testing data (connections only) — retained for Phase 4 reuse
-    juce::Point<float> startL, startR, endL, endR;
-    float angleStart, angleEnd;
-    juce::Point<float> centrePoint;
-    float radius;
-    float freqMult;
-    int barDivision;
-};
-```
+- Pure geometry (arc/input-edge/arrowhead generation, `projectToCircumference`,
+  `getLineWidth`, `getNodeSpread`, `getColourScale`, `getNodeBrightness`,
+  `makeConnectionID`) lives in the GL-free `GraphGeometry` unit so it is
+  unit-testable headlessly.
+- Connection keying for Phase 4 hit-testing: `((fromID+1) * 1000) + toID`.
+- The scene is re-derived from the controller on every paint (≤16 nodes /
+  ≤15 edges — trivial cost); the legacy per-object dirty-flag cache is not ported.
+- Root halo rendered directly (no legacy `id == -1` sentinel kludge).
 
-- Keyed by ID: node objects use node ID, connections use `((fromID+1) * 1000) + toID`
-- Separate maps for dotted/solid/triangle objects
-- Rebuild all meshes each repaint (≤16 nodes / ≤15 edges — trivial cost); the
-  legacy per-object dirty-flag cache is not ported
-- Pure geometry (circle/line/arc/arrowhead vertex generation,
-  `projectToCircumference`, `getLineWidth`, `getNodeSpread`, `getColourScale`,
-  `makeConnectionID`) extracted into a GL-free `GraphGeometry` unit so it is
-  testable headlessly
-- Root halo rendered directly (no legacy `id == -1` sentinel kludge)
+### 3.6 Rendering Decision Note
 
-### 3.6 Shader Porting
-
-- **Vertex shader** (`dotted_vert.glsl`): pass-through position/colour + `gl_VertexID`
-- **Geometry shader** (`dotted_geom.glsl`): thick triangle-strip lines with mitered joins
-  - `GL_LINE_STRIP_ADJACENCY` → compute perpendicular offsets → emit triangle strip
-- **Fragment shader** (`dotted_frag.glsl`): dashed line pattern for zero-weight connections
-- Load via `juce::OpenGLShaderProgram` with `addVertexShader/addFragmentShader/addGeometryShader`
-- Shader uniforms: `modelViewProjectionMatrix` (orthographic), `thickness`, `dotted`
-- Arrowheads (unshaded triangles) use a minimal flat vertex/fragment shader —
-  legacy drew them with the implicit default 2D shader
+- Originally attempted as a verbatim OpenGL geometry-shader port (faithful thick
+  mitered lines + fragment-shader dashes). On Linux the GL child-window did not
+  composite to screen, so Phase 3 was re-implemented in pure `juce::Graphics`,
+  which reproduces thick lines, arcs, dashes and arrowheads with no context,
+  driver or Wayland fragility. (Recorded in the autoethnographic note.)
 
 ---
 
