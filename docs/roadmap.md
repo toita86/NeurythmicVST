@@ -158,8 +158,10 @@ Expose via `juce::AudioProcessorValueTreeState`:
 ### 3.1 OpenGL Rendering Setup
 
 - `juce::OpenGLContext` attached to main component (`NetworkViewComponent`)
-- Offscreen framebuffer → render to FBO, then draw to screen (same as old FBO pattern)
-- `continuousRepainting = false` — only redraw on change via `triggerRepaint()`
+- Enable `juce::juce_opengl`; embed `dotted_vert/geom/frag.glsl` via `juce_add_binary_data`
+- Render straight to the back buffer — the legacy offscreen FBO was a redundant 1:1 blit (no post-processing), so it is dropped
+- `continuousRepainting = false` — only redraw on change via `repaint()`
+- Editor window set to 500×500 so the legacy `windowMinDim` normalised-coordinate mapping stays faithful
 
 ### 3.2 Node Rendering
 
@@ -186,9 +188,13 @@ Expose via `juce::AudioProcessorValueTreeState`:
 
 - Above node: frequency multiple label (e.g. "0.5", "2", "8") in Inter font
 - Below node: bar division label (quantise grid resolution)
-- Rendered as pre-computed glyph meshes — rebuild only when value changes
+- Drawn by a software `NodeLabelOverlayComponent` (transparent child of
+  `NetworkViewComponent`, `juce::Graphics`) on top of the GL layer — text stays
+  JUCE-native rather than being baked into glyph meshes
+- Frequency multiple = `freq / rootFreq`, snapped to the legacy display
+  increments; bar division read from `engine.getNodeQuantiser_BarDivision()`
 
-### 3.5 Port GraphVis Object Store Pattern
+### 3.5 GraphVis Port — Geometry + Mesh Store
 
 ```cpp
 struct MeshObject {
@@ -196,7 +202,7 @@ struct MeshObject {
     Type type;
     int id;
     juce::OpenGLShaderProgram::Attribute* position;
-    // Hit testing data (connections only)
+    // Hit testing data (connections only) — retained for Phase 4 reuse
     juce::Point<float> startL, startR, endL, endR;
     float angleStart, angleEnd;
     juce::Point<float> centrePoint;
@@ -208,15 +214,24 @@ struct MeshObject {
 
 - Keyed by ID: node objects use node ID, connections use `((fromID+1) * 1000) + toID`
 - Separate maps for dotted/solid/triangle objects
-- Dirty flag system: rebuild only changed objects each frame
+- Rebuild all meshes each repaint (≤16 nodes / ≤15 edges — trivial cost); the
+  legacy per-object dirty-flag cache is not ported
+- Pure geometry (circle/line/arc/arrowhead vertex generation,
+  `projectToCircumference`, `getLineWidth`, `getNodeSpread`, `getColourScale`,
+  `makeConnectionID`) extracted into a GL-free `GraphGeometry` unit so it is
+  testable headlessly
+- Root halo rendered directly (no legacy `id == -1` sentinel kludge)
 
 ### 3.6 Shader Porting
 
+- **Vertex shader** (`dotted_vert.glsl`): pass-through position/colour + `gl_VertexID`
 - **Geometry shader** (`dotted_geom.glsl`): thick triangle-strip lines with mitered joins
   - `GL_LINE_STRIP_ADJACENCY` → compute perpendicular offsets → emit triangle strip
 - **Fragment shader** (`dotted_frag.glsl`): dashed line pattern for zero-weight connections
 - Load via `juce::OpenGLShaderProgram` with `addVertexShader/addFragmentShader/addGeometryShader`
-- Shader uniforms: `thickness`, `viewportDim`
+- Shader uniforms: `modelViewProjectionMatrix` (orthographic), `thickness`, `dotted`
+- Arrowheads (unshaded triangles) use a minimal flat vertex/fragment shader —
+  legacy drew them with the implicit default 2D shader
 
 ---
 

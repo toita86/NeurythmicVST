@@ -348,6 +348,31 @@ TEST(NetworkController, ConnectionsRoundTrip) {
           .isValid());
 }
 
+TEST(NetworkController, EnumeratesConnectionsWithParentFlag) {
+  MatsuokaEngine engine(44100);
+  neurythmic::NetworkController ctrl(engine, neurythmic::ConfigManager::get());
+  ctrl.createChild(0);  // 1 (parent edge 0->1)
+  ctrl.createChild(0);  // 2 (parent edge 0->2)
+  ctrl.addConnection(1, 2);  // input edge 1->2
+
+  auto conns = ctrl.getConnections();
+  EXPECT_EQ(static_cast<int>(conns.size()), 3);
+
+  int parentEdges = 0, inputEdges = 0;
+  for (const auto& c : conns) {
+    if (c.isParentEdge) {
+      ++parentEdges;
+      EXPECT_EQ(c.sourceId, 0);
+    } else {
+      ++inputEdges;
+      EXPECT_EQ(c.sourceId, 1);
+      EXPECT_EQ(c.targetId, 2);
+    }
+  }
+  EXPECT_EQ(parentEdges, 2);
+  EXPECT_EQ(inputEdges, 1);
+}
+
 TEST(NetworkController, CalcWeightIsBounded) {
   MatsuokaEngine engine(44100);
   neurythmic::NetworkController ctrl(engine, neurythmic::ConfigManager::get());

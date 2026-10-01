@@ -87,6 +87,17 @@ public:
   std::vector<int> getNodeIds() const;
   int getNodeCount() const;
   juce::Point<float> getNodePosition(int nodeId) const;
+  double getNodeFrequency(int nodeId) const;  // reads the tree freq property
+  int getNodeBarDivision(int nodeId) const;   // engine quantiser bar division
+
+  // Connection enumeration for the renderer (source of truth = ValueTree).
+  struct ConnectionInfo {
+    int sourceId = -1;
+    int targetId = -1;
+    double weight = 0.0;
+    bool isParentEdge = false;
+  };
+  std::vector<ConnectionInfo> getConnections() const;
 
   // Replaces the whole network from a ValueTree (preset load):
   // clears the engine, re-adds nodes parent-before-child,

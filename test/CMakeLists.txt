@@ -20,16 +20,19 @@ add_executable(NeurythmicTests
   source/main.cpp
   source/NeurythmicTest.cpp
   source/MidiOutputTest.cpp
+  source/GraphGeometryTest.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginProcessor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginEditor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/ConfigManager.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NodeComponent.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NetworkState.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/FlashEnvelope.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NetworkController.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PresetManager.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/MidiOutput.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/TempoSource.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/GraphGeometry.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NodeLabelOverlay.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NetworkViewComponent.cpp
 )
 
 target_include_directories(NeurythmicTests PRIVATE
@@ -42,6 +45,7 @@ target_link_libraries(NeurythmicTests
     juce::juce_audio_processors
     juce::juce_audio_utils
     juce::juce_audio_devices
+    juce::juce_opengl
     MatsuokaEngine
     neurythmic::neurythmic_plugin_assets
     GTest::gtest

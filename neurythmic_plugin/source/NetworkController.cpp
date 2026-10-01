@@ -56,6 +56,40 @@ juce::Point<float> NetworkController::getNodePosition(int nodeId) const {
   return nodePosition(nodeId);
 }
 
+double NetworkController::getNodeFrequency(int nodeId) const {
+  juce::ValueTree n = NetworkState::getNode(_network, nodeId);
+  if (!n.isValid())
+    return 0.0;
+  return static_cast<double>(n.getProperty(NetworkState::Props::freq));
+}
+
+int NetworkController::getNodeBarDivision(int nodeId) const {
+  return static_cast<int>(
+      _engine.getNodeQuantiser_BarDivision(static_cast<unsigned>(nodeId)));
+}
+
+std::vector<NetworkController::ConnectionInfo>
+NetworkController::getConnections() const {
+  std::vector<ConnectionInfo> result;
+  NetworkState::forEachNode(_network, [&](juce::ValueTree n) {
+    const int targetId =
+        static_cast<int>(n.getProperty(NetworkState::Props::id));
+    const int parentId =
+        static_cast<int>(n.getProperty(NetworkState::Props::parentId));
+    NetworkState::forEachConnection(n, [&](juce::ValueTree conn) {
+      ConnectionInfo info;
+      info.sourceId =
+          static_cast<int>(conn.getProperty(NetworkState::Props::sourceId));
+      info.targetId = targetId;
+      info.weight =
+          static_cast<double>(conn.getProperty(NetworkState::Props::weight));
+      info.isParentEdge = info.sourceId == parentId;
+      result.push_back(info);
+    });
+  });
+  return result;
+}
+
 // node lifecycle CRUD operations
 // -------------------------------------------------------
 int NetworkController::createChild(int parentId) {
