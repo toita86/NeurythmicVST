@@ -547,23 +547,6 @@ Parameter naming convention: prefix with `node_N_` for clean sorting in DAW para
 
 ---
 
-## Summary Schedule
-
-| Phase | Days | Cumulative | Key Deliverable |
-|-------|------|------------|-----------------|
-| 0 | — | — | Existing NeurythmicVST scaffold |
-| 1 — State & Config | 1-3 | Day 3 | ValueTree network, ConfigManager, Presenter, Presets |
-| 2 — MIDI Output | 3-5 | Day 5 | **Playable MIDI instrument in DAW** |
-| 3 — GraphVis | 5-8 | Day 8 | Network renders with OpenGL |
-| 4 — Interaction | 8-10 | Day 10 | Full mouse editing of network |
-| 5 — Menus & Widgets | 10-17 | Day 17 | Complete parameter control GUI |
-| 6 — Mixer & Master | 17-19 | Day 19 | Volume/mute/solo per node |
-| 7 — DAW Polish | 19-22 | Day 22 | Automation, host sync, testing |
-
-**Total: ~22 working days (~4.5 calendar weeks)**
-
----
-
 ## Files Removed from matsuoka_frontend Scope
 
 | File / System | Reason |

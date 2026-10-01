@@ -7,8 +7,8 @@ AE-2026-09-26-1
   mapping, host tempo/transport, DAW parameters, DAW state persistence).
 - Duration:
     - time: 30 minutes 
-    - usage: 215,374 tokens
-    - cost: 0.86$
+    - usage: 18.1 M tokens
+    - cost: 1.12$
 - Agent and model: opencode / deepseek-v4-pro
 - Repository branch: main
 
