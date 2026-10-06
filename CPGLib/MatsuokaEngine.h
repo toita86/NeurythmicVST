@@ -153,6 +153,10 @@ public:
   /// QUEUED ACTION - clears the entire network back to a single root node
   void reset();
 
+  /// QUEUED ACTION - resets the indicated node's internal state to its default
+  /// initial values (as if freshly created)
+  void reset(unsigned nodeID);
+
   /// QUEUED ACTION - resets the internal state of the indicated node to the
   /// requested values
   void reset(unsigned nodeID, double x1, double x2, double v1, double v2);

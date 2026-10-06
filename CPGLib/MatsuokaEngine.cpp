@@ -249,6 +249,14 @@ void MatsuokaEngine::reset() {
   _actions.push(fn);
 }
 
+void MatsuokaEngine::reset(unsigned nodeID) {
+  void (CPG::*fptr)(unsigned) = &CPG::reset;
+  std::function<void()> fn = std::bind(fptr, &_cpg, nodeID);
+
+  std::lock_guard<std::mutex> lock(_actions_mutex);
+  _actions.push(fn);
+}
+
 void MatsuokaEngine::reset(unsigned nodeID,
                            double x1,
                            double x2,

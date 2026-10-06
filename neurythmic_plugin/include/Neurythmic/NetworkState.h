@@ -64,6 +64,7 @@ inline const juce::Identifier quantAmount{"quantAmount"};
 inline const juce::Identifier sourceId{"sourceId"};
 inline const juce::Identifier weight{"weight"};
 inline const juce::Identifier phase{"phase"};
+inline const juce::Identifier scaleFactor{"scaleFactor"};
 }  // namespace Props
 
 constexpr int kRootNodeId = 0;
@@ -88,10 +89,13 @@ juce::ValueTree createNode(juce::ValueTree root,
 void removeNode(juce::ValueTree root, int nodeId);
 
 // Adds a Connection child to `target`, unless one with that sourceId exists.
+// `scaleFactor` is the persistent multiplier from which `weight` is derived via
+// `calcWeight(distance, scaleFactor)`; it survives node drags.
 juce::ValueTree createConnection(juce::ValueTree target,
                                  int sourceId,
                                  double weight,
-                                 double phase);
+                                 double phase,
+                                 double scaleFactor = 1.0);
 
 // Removes the Connection child on `target` whose sourceId matches.
 void removeConnection(juce::ValueTree target, int sourceId);

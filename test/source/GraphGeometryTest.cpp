@@ -204,3 +204,111 @@ TEST(GraphGeometry, MakeInputEdgeTrimsTowardEachNode) {
   EXPECT_LT(dist(ie.drawEnd, Vec2(1, 0)), dist(ie.drawStart, Vec2(1, 0)));
 }
 
+TEST(GraphGeometry, MakeInputEdgePointsLieOnArcForLongEdges) {
+  // Regression: for a non-unit chord the arc centre must still be at `radius`
+  // from the draw points (the legacy code used a non-normalised perpendicular,
+  // which pushed the centre far away and looped the arc).
+  auto ie = neurythmic::GraphGeometry::makeInputEdge(Vec2(0, 0), Vec2(200, 0),
+                                                     0.5f, cfg());
+  EXPECT_NEAR(dist(ie.drawStart, ie.arcCentre), ie.radius, 1e-2f);
+  EXPECT_NEAR(dist(ie.drawEnd, ie.arcCentre), ie.radius, 1e-2f);
+  EXPECT_NEAR(dist(ie.drawArrowEnd, ie.arcCentre), ie.radius, 1e-2f);
+}
+
+// makeConnectionGeometry -----------------------------------------------------
+
+TEST(GraphGeometry, MakeConnectionGeometryParentMatchesProjection) {
+  const auto& c = cfg();
+  const Vec2 from(0.0f, 0.0f);
+  const Vec2 to(100.0f, 0.0f);
+  const float scaling = 0.5f;
+  const float distFromCentre = c.nodeRadius * c.node0HaloSize * scaling;
+
+  auto geo = neurythmic::GraphGeometry::makeConnectionGeometry(from, to, true,
+                                                               scaling, c);
+  EXPECT_TRUE(geo.isParent);
+  EXPECT_NEAR(geo.start.getX(), distFromCentre + 1.0f, 1e-3f);
+  EXPECT_NEAR(geo.start.getY(), 0.0f, 1e-3f);
+  EXPECT_NEAR(geo.end.getX(),
+              to.getX() - (distFromCentre + c.arrowHeadSize + 1.0f), 1e-3f);
+  EXPECT_NEAR(geo.arrowTip.getX(), to.getX() - (distFromCentre + 1.0f), 1e-3f);
+}
+
+TEST(GraphGeometry, MakeConnectionGeometryInputMatchesInputEdge) {
+  const auto& c = cfg();
+  const Vec2 from(0.0f, 0.0f);
+  const Vec2 to(100.0f, 0.0f);
+  const float scaling = 0.5f;
+
+  auto ie = neurythmic::GraphGeometry::makeInputEdge(from, to, scaling, c);
+  auto geo = neurythmic::GraphGeometry::makeConnectionGeometry(from, to, false,
+                                                               scaling, c);
+  EXPECT_FALSE(geo.isParent);
+  EXPECT_NEAR(geo.arcCentre.getX(), ie.arcCentre.getX(), 1e-3f);
+  EXPECT_NEAR(geo.arcCentre.getY(), ie.arcCentre.getY(), 1e-3f);
+  EXPECT_NEAR(geo.radius, ie.radius, 1e-3f);
+  EXPECT_NEAR(geo.startAngle, ie.startAngle, 1e-3f);
+  EXPECT_NEAR(geo.endAngle, ie.endAngle, 1e-3f);
+  EXPECT_NEAR(geo.arrowTip.getX(), ie.drawArrowEnd.getX(), 1e-3f);
+  EXPECT_NEAR(geo.arrowTip.getY(), ie.drawArrowEnd.getY(), 1e-3f);
+  EXPECT_NEAR(geo.arrowAngleDeg, ie.arrowAngleDeg, 1e-3f);
+}
+
+// isStraightConnectionAtPoint ------------------------------------------------
+
+TEST(GraphGeometry, IsStraightConnectionAtPointHitsOnSegment) {
+  using neurythmic::GraphGeometry::isStraightConnectionAtPoint;
+  EXPECT_TRUE(isStraightConnectionAtPoint({5.0f, 0.0f}, {0.0f, 0.0f},
+                                          {10.0f, 0.0f}, 4.0f));
+  EXPECT_TRUE(isStraightConnectionAtPoint({5.0f, 1.0f}, {0.0f, 0.0f},
+                                          {10.0f, 0.0f}, 4.0f));
+}
+
+TEST(GraphGeometry, IsStraightConnectionAtPointRespectsWidthAndEnds) {
+  using neurythmic::GraphGeometry::isStraightConnectionAtPoint;
+  EXPECT_TRUE(isStraightConnectionAtPoint({5.0f, 1.9f}, {0.0f, 0.0f},
+                                          {10.0f, 0.0f}, 4.0f));
+  EXPECT_FALSE(isStraightConnectionAtPoint({5.0f, 2.1f}, {0.0f, 0.0f},
+                                           {10.0f, 0.0f}, 4.0f));
+  EXPECT_FALSE(isStraightConnectionAtPoint({-1.0f, 0.0f}, {0.0f, 0.0f},
+                                           {10.0f, 0.0f}, 4.0f));
+  EXPECT_FALSE(isStraightConnectionAtPoint({11.0f, 0.0f}, {0.0f, 0.0f},
+                                           {10.0f, 0.0f}, 4.0f));
+}
+
+TEST(GraphGeometry, IsStraightConnectionAtPointVertical) {
+  using neurythmic::GraphGeometry::isStraightConnectionAtPoint;
+  EXPECT_TRUE(isStraightConnectionAtPoint({0.0f, 5.0f}, {0.0f, 0.0f},
+                                          {0.0f, 10.0f}, 4.0f));
+  EXPECT_FALSE(isStraightConnectionAtPoint({3.0f, 5.0f}, {0.0f, 0.0f},
+                                           {0.0f, 10.0f}, 4.0f));
+}
+
+// isCurvedConnectionAtPoint --------------------------------------------------
+
+TEST(GraphGeometry, IsCurvedConnectionAtPointHitsOnArc) {
+  using neurythmic::GraphGeometry::isCurvedConnectionAtPoint;
+  const float a = kPi / 4.0f;
+  EXPECT_TRUE(isCurvedConnectionAtPoint({10.0f * std::cos(a), 10.0f * std::sin(a)},
+                                        {0.0f, 0.0f}, 10.0f, 0.0f, kPi / 2.0f,
+                                        2.0f));
+}
+
+TEST(GraphGeometry, IsCurvedConnectionAtPointRespectsRadiusAndAngle) {
+  using neurythmic::GraphGeometry::isCurvedConnectionAtPoint;
+  const float a = kPi / 4.0f;
+  // radius 11 is within radius ± 2.
+  EXPECT_TRUE(isCurvedConnectionAtPoint(
+      {11.0f * std::cos(a), 11.0f * std::sin(a)}, {0.0f, 0.0f}, 10.0f, 0.0f,
+      kPi / 2.0f, 2.0f));
+  // radius 13 exceeds radius + 2.
+  EXPECT_FALSE(isCurvedConnectionAtPoint(
+      {13.0f * std::cos(a), 13.0f * std::sin(a)}, {0.0f, 0.0f}, 10.0f, 0.0f,
+      kPi / 2.0f, 2.0f));
+  // on the arc radius but outside the [0, pi/2] angle span.
+  const float neg = -kPi / 4.0f;
+  EXPECT_FALSE(isCurvedConnectionAtPoint(
+      {10.0f * std::cos(neg), 10.0f * std::sin(neg)}, {0.0f, 0.0f}, 10.0f, 0.0f,
+      kPi / 2.0f, 2.0f));
+}
+

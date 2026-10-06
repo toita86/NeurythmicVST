@@ -12,8 +12,6 @@ namespace neurythmic {
 
 namespace {
 
-constexpr float kPiFloat = 3.14159265358979323846f;
-
 juce::Colour scaleRGB(juce::Colour c, float m) {
   return juce::Colour::fromFloatRGBA(c.getFloatRed() * m, c.getFloatGreen() * m,
                                      c.getFloatBlue() * m, 1.0f);
@@ -79,54 +77,41 @@ void NetworkViewComponent::drawConnections(juce::Graphics& g,
                                            const ConfigManager& cfg,
                                            float scaling,
                                            float minDim) {
-  auto toPixel = [&](juce::Point<float> n) {
-    return juce::Point<float>(n.getX() * minDim, n.getY() * minDim);
-  };
-
   std::map<int, juce::Point<float>> pos;
   for (int id : _controller.getNodeIds())
-    pos[id] = toPixel(_controller.getNodePosition(id));
+    pos[id] = toPixel(_controller.getNodePosition(id), minDim);
 
   for (const auto& conn : _controller.getConnections()) {
     const juce::Point<float> from = pos[conn.sourceId];
     const juce::Point<float> to = pos[conn.targetId];
     const float weight = static_cast<float>(conn.weight);
     const bool dotted = weight < 0.0001f;
-    const float colourScale = GraphGeometry::getColourScale(weight, cfg);
+    const bool selected =
+        _controller.isConnectionSelected(conn.sourceId, conn.targetId);
+
+    const auto geo = GraphGeometry::makeConnectionGeometry(
+        from, to, conn.isParentEdge, scaling, cfg);
+
     juce::Colour colour =
-        juce::Colours::lightgrey.interpolatedWith(cfg.connColour, colourScale);
-    if (dotted)
+        selected
+            ? cfg.selectedColour
+            : juce::Colours::lightgrey.interpolatedWith(
+                  cfg.connColour, GraphGeometry::getColourScale(weight, cfg));
+    if (!selected && dotted)
       colour = scaleRGB(colour, cfg.inactiveBrightnessMult);
     const float thickness = GraphGeometry::getLineWidth(weight, cfg);
 
     juce::Path path;
-    juce::Point<float> arrowTip;
-    float arrowAngleDeg = 0.0f;
-
     if (conn.isParentEdge) {
-      const float distFromCentre = cfg.nodeRadius * cfg.node0HaloSize * scaling;
-      const juce::Point<float> start =
-          GraphGeometry::projectToCircumference(from, to, distFromCentre);
-      const juce::Point<float> end = GraphGeometry::projectToCircumference(
-          to, from, distFromCentre + cfg.arrowHeadSize);
-      arrowTip =
-          GraphGeometry::projectToCircumference(to, from, distFromCentre);
-
-      path.startNewSubPath(start);
-      path.lineTo(end);
-
-      const juce::Point<float> dv = start - arrowTip;
-      arrowAngleDeg = std::atan2(-dv.getX(), dv.getY()) * 180.0f / kPiFloat;
+      path.startNewSubPath(geo.start);
+      path.lineTo(geo.end);
     } else {
-      const auto ie = GraphGeometry::makeInputEdge(from, to, scaling, cfg);
       const auto arcPts =
-          GraphGeometry::makeArc(ie.arcCentre, ie.radius, ie.startAngle,
-                                 ie.endAngle, cfg.pointsInArc, cfg);
+          GraphGeometry::makeArc(geo.arcCentre, geo.radius, geo.startAngle,
+                                 geo.endAngle, cfg.pointsInArc, cfg);
       path.startNewSubPath(arcPts[1]);
       for (size_t i = 2; i < arcPts.size() - 1; ++i)
         path.lineTo(arcPts[i]);
-      arrowTip = ie.drawArrowEnd;
-      arrowAngleDeg = ie.arrowAngleDeg;
     }
 
     g.setColour(colour);
@@ -143,8 +128,8 @@ void NetworkViewComponent::drawConnections(juce::Graphics& g,
                                      juce::PathStrokeType::butt));
     }
 
-    const auto tri =
-        GraphGeometry::makeArrowHead(arrowTip, arrowAngleDeg, weight, cfg);
+    const auto tri = GraphGeometry::makeArrowHead(
+        geo.arrowTip, geo.arrowAngleDeg, weight, cfg);
     juce::Path arrow;
     arrow.addTriangle(tri[0].getX(), tri[0].getY(), tri[1].getX(),
                       tri[1].getY(), tri[2].getX(), tri[2].getY());
@@ -156,17 +141,16 @@ void NetworkViewComponent::drawNodes(juce::Graphics& g,
                                      const ConfigManager& cfg,
                                      float scaling,
                                      float minDim) {
-  auto toPixel = [&](juce::Point<float> n) {
-    return juce::Point<float>(n.getX() * minDim, n.getY() * minDim);
-  };
-
   for (int id : _controller.getNodeIds()) {
     const float intensity =
         static_cast<float>(_controller.getNodeIntensity(id));
     const float bright = GraphGeometry::getNodeBrightness(intensity, cfg);
-    const juce::Colour colour = scaleRGB(cfg.getNodeColour(id), bright);
+    const bool selected = _controller.isNodeSelected(id);
+    const juce::Colour colour =
+        selected ? cfg.selectedColour : scaleRGB(cfg.getNodeColour(id), bright);
     const float thickness = GraphGeometry::getNodeSpread(intensity, cfg);
-    const juce::Point<float> p = toPixel(_controller.getNodePosition(id));
+    const juce::Point<float> p =
+        toPixel(_controller.getNodePosition(id), minDim);
 
     g.setColour(colour);
     if (id == NetworkState::kRootNodeId) {
@@ -216,6 +200,129 @@ void NetworkViewComponent::drawLabels(juce::Graphics& g,
                  juce::Justification::centred);
     }
   }
+}
+
+// interaction -----------------------------------------------------------
+juce::Point<float> NetworkViewComponent::toPixel(juce::Point<float> normalised,
+                                                 float minDim) const {
+  return juce::Point<float>(normalised.getX() * minDim,
+                            normalised.getY() * minDim);
+}
+
+juce::Point<float> NetworkViewComponent::toNormalised(juce::Point<float> pixel,
+                                                      float minDim) const {
+  if (minDim <= 0.0f)
+    return {};
+  return juce::Point<float>(pixel.getX() / minDim, pixel.getY() / minDim);
+}
+
+void NetworkViewComponent::focusNode(int nodeId, juce::Point<float> pixel) {
+  NetworkController::Focus f;
+  f.type = (nodeId == NetworkState::kRootNodeId)
+               ? NetworkController::FocusType::RootNode
+               : NetworkController::FocusType::ChildNode;
+  f.nodeId = nodeId;
+  f.cursorPos = pixel;
+  _controller.setFocus(f);
+}
+
+void NetworkViewComponent::focusConnection(int from,
+                                           int to,
+                                           juce::Point<float> pixel) {
+  NetworkController::Focus f;
+  f.type = (_controller.getNodeParent(to) == from)
+               ? NetworkController::FocusType::ParentChildEdge
+               : NetworkController::FocusType::InputEdge;
+  f.nodeId = to;
+  f.connectionFromId = from;
+  f.connectionToId = to;
+  f.cursorPos = pixel;
+  _controller.setFocus(f);
+}
+
+void NetworkViewComponent::mouseDown(const juce::MouseEvent& e) {
+  const float minDim = static_cast<float>(std::min(getWidth(), getHeight()));
+  const juce::Point<float> pixel = e.position;
+  const juce::Point<float> norm = toNormalised(pixel, minDim);
+  const int nodeId = _controller.isNodeAtPoint(norm);
+
+  // Right-click: select + focus only; the context menu arrives in Phase 5.
+  if (e.mods.isRightButtonDown()) {
+    if (nodeId >= 0) {
+      _controller.clearSelection();
+      _controller.setNodeSelected(nodeId, true);
+      focusNode(nodeId, pixel);
+    } else {
+      const auto conn = _controller.connectionAtPoint(pixel, minDim);
+      if (conn.first >= 0) {
+        _controller.clearSelection();
+        _controller.selectConnection(conn.first, conn.second);
+        focusConnection(conn.first, conn.second, pixel);
+      } else {
+        _controller.clearSelection();
+        _controller.clearFocus();
+      }
+    }
+    return;
+  }
+
+  if (nodeId >= 0) {
+    // Set focus first so the previous node becomes the connection source.
+    focusNode(nodeId, pixel);
+    const auto prev = _controller.getPrevFocus();
+
+    if (e.mods.isShiftDown()) {
+      if (prev.nodeId >= 0 && prev.nodeId != nodeId)
+        _controller.toggleConnection(prev.nodeId, nodeId);
+      return;
+    }
+    if (e.mods.isAltDown()) {
+      _controller.resetNode(nodeId);
+      return;
+    }
+    if (e.mods.isCommandDown()) {
+      _controller.toggleNodeSelected(nodeId);
+    } else {
+      _controller.clearSelection();
+      _controller.setNodeSelected(nodeId, true);
+    }
+    _controller.setNodePositionOffsets(norm);
+    return;
+  }
+
+  const auto conn = _controller.connectionAtPoint(pixel, minDim);
+  if (conn.first >= 0) {
+    _controller.clearSelection();
+    _controller.selectConnection(conn.first, conn.second);
+    focusConnection(conn.first, conn.second, pixel);
+    return;
+  }
+
+  _controller.clearSelection();
+  _controller.clearFocus();
+}
+
+void NetworkViewComponent::mouseDrag(const juce::MouseEvent& e) {
+  const float minDim = static_cast<float>(std::min(getWidth(), getHeight()));
+  const juce::Point<float> norm = toNormalised(e.position, minDim);
+  const auto focus = _controller.getFocus();
+
+  if (e.mods.isLeftButtonDown()) {
+    if (focus.type == NetworkController::FocusType::RootNode ||
+        focus.type == NetworkController::FocusType::ChildNode) {
+      if (_controller.canIDragHere(norm, focus.nodeId))
+        _controller.moveSelectedNodes(norm);
+    }
+    return;
+  }
+
+  // Right-drag on empty space pans the whole graph.
+  if (focus.type == NetworkController::FocusType::None)
+    _controller.moveAllNodes(norm);
+}
+
+void NetworkViewComponent::mouseUp(const juce::MouseEvent&) {
+  _controller.endMoveAllNodes();
 }
 
 }  // namespace neurythmic

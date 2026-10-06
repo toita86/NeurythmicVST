@@ -112,6 +112,12 @@ InputEdge makeInputEdge(Vec2 start,
       cfg.defaultCurveAmount * (strghtDist * strghtDist * 0.2f / 1200.0f);
 
   Vec2 perpendicular(-(end.getY() - start.getY()), end.getX() - start.getX());
+  // Normalise: the legacy code passed the full-length perpendicular into the
+  // arc-centre offset, which made the centre inconsistent with the radius
+  // formula (radius assumes a unit perpendicular) and produced looping arcs.
+  const float perpLen = std::hypot(perpendicular.getX(), perpendicular.getY());
+  if (perpLen > 1e-9f)
+    perpendicular = perpendicular * (1.0f / perpLen);
   Vec2 midpoint((start.getX() + end.getX()) / 2.0f,
                 (start.getY() + end.getY()) / 2.0f);
   Vec2 arcCentre = perpendicular * (curveAmt * strghtDist) + midpoint;
@@ -169,6 +175,98 @@ float getNodeBrightness(float intensity, const ConfigManager& cfg) {
 
 int makeConnectionID(int fromId, int toId) {
   return ((fromId + 1) * 1000) + toId;
+}
+
+ConnectionGeometry makeConnectionGeometry(Vec2 from,
+                                          Vec2 to,
+                                          bool isParent,
+                                          float scaling,
+                                          const ConfigManager& cfg) {
+  ConnectionGeometry geo;
+  geo.isParent = isParent;
+  if (isParent) {
+    const float distFromCentre = cfg.nodeRadius * cfg.node0HaloSize * scaling;
+    geo.start = projectToCircumference(from, to, distFromCentre);
+    geo.end =
+        projectToCircumference(to, from, distFromCentre + cfg.arrowHeadSize);
+    geo.arrowTip = projectToCircumference(to, from, distFromCentre);
+    const Vec2 dv = geo.start - geo.arrowTip;
+    geo.arrowAngleDeg = std::atan2(-dv.getX(), dv.getY()) * 180.0f / kPi;
+  } else {
+    const InputEdge ie = makeInputEdge(from, to, scaling, cfg);
+    geo.start = ie.drawStart;
+    geo.end = ie.drawEnd;
+    geo.arcCentre = ie.arcCentre;
+    geo.radius = ie.radius;
+    geo.startAngle = ie.startAngle;
+    geo.endAngle = ie.endAngle;
+    geo.arrowTip = ie.drawArrowEnd;
+    geo.arrowAngleDeg = ie.arrowAngleDeg;
+  }
+  return geo;
+}
+
+bool isStraightConnectionAtPoint(Vec2 point,
+                                 Vec2 start,
+                                 Vec2 end,
+                                 float clickableWidth) {
+  const Vec2 line = end - start;
+  const float len = std::hypot(line.getX(), line.getY());
+  if (len < 1e-9f)
+    return point.getDistanceFrom(start) <= clickableWidth / 2.0f;
+
+  // Perpendicular offset of magnitude clickableWidth/2 each side (matches the
+  // legacy `lineVector.getScaled(clickableWidth/2)` + 90° rotation).
+  const Vec2 perp =
+      Vec2(-line.getY(), line.getX()) * (clickableWidth / (2.0f * len));
+
+  const Vec2 v1 = start + perp;  // startL
+  const Vec2 v2 = end + perp;    // endL
+  const Vec2 v3 = end - perp;    // endR
+  const Vec2 v4 = start - perp;  // startR
+
+  // Point-in-quadrilateral raycast (four edges).
+  const float px = point.getX();
+  const float py = point.getY();
+  const auto crosses = [&](const Vec2& a, const Vec2& b) {
+    return (a.getY() >= py) != (b.getY() >= py) &&
+           px <=
+               (b.getX() - a.getX()) * (py - a.getY()) / (b.getY() - a.getY()) +
+                   a.getX();
+  };
+
+  bool inside = false;
+  if (crosses(v1, v2))
+    inside = !inside;
+  if (crosses(v2, v3))
+    inside = !inside;
+  if (crosses(v3, v4))
+    inside = !inside;
+  if (crosses(v4, v1))
+    inside = !inside;
+  return inside;
+}
+
+bool isCurvedConnectionAtPoint(Vec2 point,
+                               Vec2 arcCentre,
+                               float radius,
+                               float startAngle,
+                               float endAngle,
+                               float clickableWidth) {
+  const float dist = point.getDistanceFrom(arcCentre);
+  const float maxDist = radius + clickableWidth;
+  if (dist > maxDist)
+    return false;
+  const float minDist = radius - clickableWidth;
+  if (dist < minDist)
+    return false;
+
+  const float anglePoint = std::atan2(point.getY() - arcCentre.getY(),
+                                      point.getX() - arcCentre.getX());
+  // Legacy `is_angle_between2`.
+  const double d = anglePoint - startAngle;
+  const double s = std::remainder(endAngle - startAngle - kPi, kTwoPi) + kPi;
+  return std::remainder(d - kPi, kTwoPi) + kPi <= s;
 }
 
 }  // namespace neurythmic::GraphGeometry

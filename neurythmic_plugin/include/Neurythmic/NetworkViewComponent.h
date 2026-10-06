@@ -19,6 +19,9 @@ public:
 
   void paint(juce::Graphics& g) override;
   void resized() override;
+  void mouseDown(const juce::MouseEvent& e) override;
+  void mouseDrag(const juce::MouseEvent& e) override;
+  void mouseUp(const juce::MouseEvent& e) override;
 
 private:
   void drawConnections(juce::Graphics& g,
@@ -33,6 +36,11 @@ private:
                   const ConfigManager& cfg,
                   float scaling,
                   float minDim);
+
+  juce::Point<float> toPixel(juce::Point<float> normalised, float minDim) const;
+  juce::Point<float> toNormalised(juce::Point<float> pixel, float minDim) const;
+  void focusNode(int nodeId, juce::Point<float> pixel);
+  void focusConnection(int from, int to, juce::Point<float> pixel);
 
   NetworkController& _controller;
   juce::Font _font{juce::FontOptions{}};
