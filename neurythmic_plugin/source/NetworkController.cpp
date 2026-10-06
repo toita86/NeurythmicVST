@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <stdexcept>
 
+#include "../include/Neurythmic/GraphGeometry.h"
+
 namespace neurythmic {
 
 namespace {
@@ -32,6 +34,7 @@ NetworkController::NetworkController(MatsuokaEngine& engine,
   _flashEnvelopes.reserve(NetworkState::kMaxNodes);
   for (int i = 0; i < NetworkState::kMaxNodes; ++i)
     _flashEnvelopes.emplace_back(frameRate);
+  _clickOffsets.assign(NetworkState::kMaxNodes, juce::Point<float>{});
 
   // Mirror the engine's root frequency into the tree.
   juce::ValueTree root =
@@ -66,6 +69,13 @@ double NetworkController::getNodeFrequency(int nodeId) const {
 int NetworkController::getNodeBarDivision(int nodeId) const {
   return static_cast<int>(
       _engine.getNodeQuantiser_BarDivision(static_cast<unsigned>(nodeId)));
+}
+
+int NetworkController::getNodeParent(int nodeId) const {
+  juce::ValueTree n = NetworkState::getNode(_network, nodeId);
+  if (!n.isValid())
+    return NetworkState::kNoParentId;
+  return static_cast<int>(n.getProperty(NetworkState::Props::parentId));
 }
 
 std::vector<NetworkController::ConnectionInfo>
@@ -112,8 +122,12 @@ int NetworkController::createChild(int parentId) {
       calcWeight(parentId, newId, _config.newParentChildConnWeightScale);
   juce::ValueTree pc =
       node.getChildWithProperty(NetworkState::Props::sourceId, parentId);
-  if (pc.isValid())
+  if (pc.isValid()) {
     pc.setProperty(NetworkState::Props::weight, weight, nullptr);
+    pc.setProperty(NetworkState::Props::scaleFactor,
+                   static_cast<double>(_config.newParentChildConnWeightScale),
+                   nullptr);
+  }
 
   // Engine second
   _engine.addChild(parentId, newId);
@@ -260,8 +274,10 @@ void NetworkController::addConnection(int from, int to) {
     throw std::runtime_error("addConnection: node does not exist");
 
   double weight = calcWeight(from, to, _config.newConnWeightScale);
-  NetworkState::createConnection(target, from, weight, 0.0);  // ValueTree first
-  _engine.setConnection(from, to, weight);                    // Engine second
+  NetworkState::createConnection(
+      target, from, weight, 0.0,
+      _config.newConnWeightScale);          // ValueTree first
+  _engine.setConnection(from, to, weight);  // Engine second
   _engine.doQueuedActions();
 }
 
@@ -279,18 +295,41 @@ void NetworkController::removeConnection(int from, int to) {
   _engine.doQueuedActions();
 }
 
-void NetworkController::updateConnectionWeight(int from,
-                                               int to,
-                                               double weight) {
+void NetworkController::setConnectionScaleFactor(int from,
+                                                 int to,
+                                                 double scale) {
   juce::ValueTree target = NetworkState::getNode(_network, to);
   if (!target.isValid())
     return;
   juce::ValueTree conn =
       target.getChildWithProperty(NetworkState::Props::sourceId, from);
-  if (conn.isValid())
-    conn.setProperty(NetworkState::Props::weight, weight, nullptr);
-  _engine.setConnection(from, to, weight);
+  if (!conn.isValid())
+    return;
+  conn.setProperty(NetworkState::Props::scaleFactor, scale, nullptr);
+  recomputeConnectionWeight(from, to);
   _engine.doQueuedActions();
+}
+
+bool NetworkController::getIsConnected(int from, int to) const {
+  juce::ValueTree target = NetworkState::getNode(_network, to);
+  return target.isValid() &&
+         target.getChildWithProperty(NetworkState::Props::sourceId, from)
+             .isValid();
+}
+
+void NetworkController::toggleConnection(int from, int to) {
+  juce::ValueTree target = NetworkState::getNode(_network, to);
+  const bool isParent =
+      target.isValid() &&
+      static_cast<int>(target.getProperty(NetworkState::Props::parentId)) ==
+          from;
+
+  if (getIsConnected(from, to)) {
+    if (!isParent)
+      removeConnection(from, to);
+    return;
+  }
+  addConnection(from, to);
 }
 
 void NetworkController::updateConnectionPhase(int from, int to, double phase) {
@@ -336,6 +375,135 @@ bool NetworkController::canIDragHere(juce::Point<float> pos, int nodeId) const {
       free = false;
   });
   return free;
+}
+
+std::pair<int, int> NetworkController::connectionAtPoint(
+    juce::Point<float> pixelPos,
+    float minDim) const {
+  if (minDim <= 0.0f)
+    return {-1, -1};
+  const float scaling = std::min(1.0f, minDim / 1000.0f);
+
+  for (const auto& conn : getConnections()) {
+    const juce::Point<float> from = nodePosition(conn.sourceId) * minDim;
+    const juce::Point<float> to = nodePosition(conn.targetId) * minDim;
+    const GraphGeometry::ConnectionGeometry geo =
+        GraphGeometry::makeConnectionGeometry(from, to, conn.isParentEdge,
+                                              scaling, _config);
+    const bool hit =
+        conn.isParentEdge
+            ? GraphGeometry::isStraightConnectionAtPoint(
+                  pixelPos, geo.start, geo.end,
+                  _config.connectionClickableWidth)
+            : GraphGeometry::isCurvedConnectionAtPoint(
+                  pixelPos, geo.arcCentre, geo.radius, geo.startAngle,
+                  geo.endAngle, _config.connectionClickableWidth);
+    if (hit)
+      return {conn.sourceId, conn.targetId};
+  }
+  return {-1, -1};
+}
+
+// selection -------------------------------------------------------------
+bool NetworkController::isNodeSelected(int nodeId) const {
+  return _selectedNodes.count(nodeId) != 0;
+}
+
+void NetworkController::setNodeSelected(int nodeId, bool selected) {
+  if (selected)
+    _selectedNodes.insert(nodeId);
+  else
+    _selectedNodes.erase(nodeId);
+}
+
+bool NetworkController::toggleNodeSelected(int nodeId) {
+  if (_selectedNodes.count(nodeId) != 0) {
+    _selectedNodes.erase(nodeId);
+    return false;
+  }
+  _selectedNodes.insert(nodeId);
+  return true;
+}
+
+void NetworkController::clearNodeSelection() {
+  _selectedNodes.clear();
+}
+
+void NetworkController::selectConnection(int from, int to) {
+  _selectedConnectionFrom = from;
+  _selectedConnectionTo = to;
+}
+
+bool NetworkController::isConnectionSelected(int from, int to) const {
+  return _selectedConnectionFrom == from && _selectedConnectionTo == to;
+}
+
+void NetworkController::clearSelection() {
+  clearNodeSelection();
+  _selectedConnectionFrom = -1;
+  _selectedConnectionTo = -1;
+}
+
+// drag (normalised coordinates) ----------------------------------------
+void NetworkController::setNodePositionOffsets(juce::Point<float> pos) {
+  for (int id : getNodeIds())
+    if (isNodeSelected(id))
+      _clickOffsets[id] = nodePosition(id) - pos;
+}
+
+void NetworkController::moveSelectedNodes(juce::Point<float> pos) {
+  std::vector<int> selected;
+  for (int id : getNodeIds())
+    if (isNodeSelected(id))
+      selected.push_back(id);
+
+  for (int id : selected) {
+    const juce::Point<float> newPos = _clickOffsets[id] + pos;
+    setNodePosition(id, newPos);
+
+    // Recompute incoming connection weights (including the parent edge).
+    juce::ValueTree node = NetworkState::getNode(_network, id);
+    NetworkState::forEachConnection(node, [&](juce::ValueTree conn) {
+      const int source =
+          static_cast<int>(conn.getProperty(NetworkState::Props::sourceId));
+      recomputeConnectionWeight(source, id);
+    });
+
+    // Recompute outgoing connection weights (this node is the source).
+    NetworkState::forEachNode(_network, [&](juce::ValueTree other) {
+      const int target =
+          static_cast<int>(other.getProperty(NetworkState::Props::id));
+      if (target == id)
+        return;
+      if (other.getChildWithProperty(NetworkState::Props::sourceId, id)
+              .isValid())
+        recomputeConnectionWeight(id, target);
+    });
+  }
+  _engine.doQueuedActions();
+}
+
+void NetworkController::moveAllNodes(juce::Point<float> pos) {
+  if (!_draggingAll) {
+    _draggingAll = true;
+    for (int id : getNodeIds())
+      setNodeSelected(id, true);
+    setNodePositionOffsets(pos);
+  }
+  moveSelectedNodes(pos);
+}
+
+void NetworkController::endMoveAllNodes() {
+  if (_draggingAll) {
+    clearNodeSelection();
+    _draggingAll = false;
+  }
+}
+
+void NetworkController::resetNode(int nodeId) {
+  // Reset the node's oscillator state to the engine's default initial values.
+  _engine.reset(static_cast<unsigned>(nodeId));
+  _engine.doQueuedActions();
 }
 
 void NetworkController::setFocus(Focus newFocus) {
@@ -400,6 +568,32 @@ void NetworkController::setNodePosition(int nodeId, juce::Point<float> pos) {
     return;
   n.setProperty(NetworkState::Props::positionX, pos.getX(), nullptr);
   n.setProperty(NetworkState::Props::positionY, pos.getY(), nullptr);
+}
+
+double NetworkController::getConnectionScaleFactor(int from, int to) const {
+  juce::ValueTree target = NetworkState::getNode(_network, to);
+  if (!target.isValid())
+    return 0.0;
+  juce::ValueTree conn =
+      target.getChildWithProperty(NetworkState::Props::sourceId, from);
+  if (!conn.isValid())
+    return 0.0;
+  return static_cast<double>(
+      conn.getProperty(NetworkState::Props::scaleFactor));
+}
+
+void NetworkController::recomputeConnectionWeight(int from, int to) {
+  juce::ValueTree target = NetworkState::getNode(_network, to);
+  if (!target.isValid())
+    return;
+  juce::ValueTree conn =
+      target.getChildWithProperty(NetworkState::Props::sourceId, from);
+  if (!conn.isValid())
+    return;
+  const double scale = getConnectionScaleFactor(from, to);
+  const double weight = calcWeight(from, to, scale);
+  conn.setProperty(NetworkState::Props::weight, weight, nullptr);
+  _engine.setConnection(from, to, weight);
 }
 
 juce::Point<float> NetworkController::positionNewNode(int parentId) {

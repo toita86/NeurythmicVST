@@ -50,7 +50,8 @@ void removeNode(juce::ValueTree root, int nodeId) {
 juce::ValueTree createConnection(juce::ValueTree target,
                                  int sourceId,
                                  double weight,
-                                 double phase) {
+                                 double phase,
+                                 double scaleFactor) {
   juce::ValueTree existing =
       target.getChildWithProperty(Props::sourceId, sourceId);
   if (existing.isValid())
@@ -60,6 +61,7 @@ juce::ValueTree createConnection(juce::ValueTree target,
   conn.setProperty(Props::sourceId, sourceId, nullptr);
   conn.setProperty(Props::weight, weight, nullptr);
   conn.setProperty(Props::phase, phase, nullptr);
+  conn.setProperty(Props::scaleFactor, scaleFactor, nullptr);
   target.addChild(conn, -1, nullptr);
   return conn;
 }

@@ -10,7 +10,7 @@ PluginProcessor (audio thread)
   └── State persistence (juce::ValueTree + DAW params)
 
 PluginEditor (GUI thread)
-  ├── NetworkView — OpenGL graph (nodes, arcs, arrows, labels)
+  ├── NetworkView — software juce::Graphics graph (nodes, arcs, arrows, labels)
   ├── NodeMenu — right-click per-node (freq, constraints, MIDI)
   ├── MainMenu — sidebar (presets, CPG globals, mixer)
   └── Interaction — click/drag/shift-connect/right-click
@@ -27,6 +27,8 @@ PluginEditor (GUI thread)
 | Rendering backend | Software (`juce::Graphics`) | Cross-platform, no GL context/driver fragility; graph is ≤16 nodes so CPU rendering is trivial |
 | Audio output | MIDI-only | No internal synthesis; drives external VST samplers/synths |
 | MAX/MSP dependency | Removed | Engine runs locally via CPGLib |
+| Connection weight | Derived (`calcWeight(distance, scaleFactor)`) | Faithful to legacy: weight follows distance, recomputed on drag; the menu slider edits the scale factor, not the raw weight |
+| Selection state | UI-transient (controller only) | Selection is ephemeral; it is never serialized into presets |
 
 ---
 
@@ -178,6 +180,10 @@ Expose via `juce::AudioProcessorValueTreeState`:
   (at `nodeRadius * node0HaloSize`), thickness `getLineWidth(weight)`.
 - **Input edges** (non-parent): curved arcs — `makeInputEdge()` + `makeArc()`
   points built into a `juce::Path`, stroked with `PathStrokeType`.
+  - Note: the legacy `makeInputEdge` used a non-normalised perpendicular for the
+    arc centre, which made the centre inconsistent with the radius and produced
+    looping arcs; the port normalises the perpendicular (a documented deviation
+    from the verbatim port).
 - **Arrow heads**: `makeArrowHead()` triangle filled via `juce::Path`.
 - **Dotted lines**: zero-weight connections stroked with
   `PathStrokeType::createDashedStroke`.
@@ -199,7 +205,9 @@ Expose via `juce::AudioProcessorValueTreeState`:
   `getLineWidth`, `getNodeSpread`, `getColourScale`, `getNodeBrightness`,
   `makeConnectionID`) lives in the GL-free `GraphGeometry` unit so it is
   unit-testable headlessly.
-- Connection keying for Phase 4 hit-testing: `((fromID+1) * 1000) + toID`.
+- Connection keying for Phase 4 hit-testing: the `(sourceId, targetId)` pair
+  (the legacy `((fromID+1) * 1000) + toID` encoding is dropped — it only keyed
+  the GL mesh map).
 - The scene is re-derived from the controller on every paint (≤16 nodes /
   ≤15 edges — trivial cost); the legacy per-object dirty-flag cache is not ported.
 - Root halo rendered directly (no legacy `id == -1` sentinel kludge).
@@ -221,19 +229,21 @@ Expose via `juce::AudioProcessorValueTreeState`:
 
 | Gesture | Target | Action |
 |---------|--------|--------|
-| Left click | Node | Select node, show focus |
-| Left click | Connection | Select connection, show weight/phase handles |
-| Left click | Empty area | Deselect all |
-| Drag | Selected node | Move node position, recalculate connected arcs |
-| Shift+click | Node A → Node B | Create connection from A to B |
-| Right-click | Node | Open NodeMenu at cursor position |
-| Right-click | Connection | Open ConnectionMenu at cursor position |
-| Ctrl+click | Nodes | Multi-select |
+| Left click | Node | Select node (Ctrl = multi-select), set focus |
+| Left click | Connection | Select connection, set focus |
+| Left click | Empty area | Deselect all, clear focus |
+| Drag (LMB) | Selected node | Move selection, recompute connected weights |
+| Drag (RMB) | Empty area | Move all nodes (pan the whole graph) |
+| Shift+click | Node A → Node B | Create (or toggle) connection from A to B |
+| Alt+click | Node | Reset node to defaults |
+| Right-click | Node / Connection | Select + set focus (menu opens in Phase 5) |
+| Ctrl+click | Nodes | Multi-select toggle |
 
-- All handled in `NetworkViewComponent::mouseDown/mouseDrag/mouseUp/mouseMove`
+- All handled in `NetworkViewComponent::mouseDown/mouseDrag/mouseUp`
 - Pixel ↔ normalized coordinate conversion via window min dimension
+- Modifier keys read from `juce::ModifierKeys`
 
-### 4.2 Port Focus System
+### 4.2 Focus & Selection
 
 ```cpp
 enum class FocusType { RootNode, ChildNode, ParentChildEdge, InputEdge, Menu, None };
@@ -250,30 +260,55 @@ struct Focus {
 };
 ```
 
-- Visual feedback: selected items drawn in highlight color
-- Drag preview: translucent copy of node/connection during move
+- **Focus** = the transient interaction target (what is under the cursor / being
+  dragged). **Selection** = the persistent highlight, held as UI-transient state
+  in the controller (a set of node IDs + one optional connection), *not* in the
+  ValueTree — selection is never serialized into presets.
+- Selected nodes/connections are drawn in `selectedColour`.
+- Drag preview (translucent ghost) is deferred to Phase 7 polish.
 
 ### 4.3 Hit Testing
 
-- **Node hit test**: bounding box using `nodeClickableRadius` (normalized 0.035)
-- **Straight connection**: point-in-quadrilateral raycast algorithm
-  - Quad formed by: (startL, startR, endL, endR) — left/right edges of thick line
-- **Curved connection**: distance from point to arc center between `radius ± connectionClickableWidth` (15px), then angle range check
-- Hit test order: nodes first, then connections (nodes take priority if overlapping)
+- **Node hit test**: bounding box using `nodeClickableRadius` (normalized 0.035).
+- **Straight connection** (parent-child): point-in-quadrilateral raycast against
+  the projected segment widened by `connectionClickableWidth`.
+- **Curved connection** (input edge): distance from point to arc centre between
+  `radius ± connectionClickableWidth` (15px), then an angle-range check.
+- Geometry is derived on the fly from node positions (no cached mesh map): the
+  same `GraphGeometry::makeConnectionGeometry()` used by the renderer feeds the
+  hit test, so the clickable region always matches the drawn shape.
+- Hit test order: nodes first, then connections (nodes take priority).
+- Connection identity is the `(sourceId, targetId)` pair (the legacy
+  `((from+1)*1000)+to` keying is dropped — it only existed for the GL mesh map).
 
 ### 4.4 Connection Creation Flow
 
-1. Shift held → enter "add input" mode
-2. Click source node → highlight source, cursor shows connector line
-3. Click target node → confirm connection
-4. NetworkController creates connection with default weight (0 or parent/child weight)
-5. Engine registers connection, OSC message no longer needed
+1. Shift held on a node click → enter "add input" mode.
+2. Click source node A, then target node B (both shift-held).
+3. `NetworkController::toggleConnection(from, to)`:
+   - already connected & not the parent → remove the connection;
+   - otherwise → `addConnection` with `scaleFactor = newConnWeightScale`,
+     `weight = calcWeight(distance, scaleFactor)`.
+4. Engine registers the connection via `setConnection`.
 
 ### 4.5 Node Deletion Flow
 
-- Only leaf nodes (no children) can be deleted
-- "Delete" mutes node + zeroes all connections + marks inactive
-- Engine limitation: MAX_NODES fixed at 16 — deletion frees the slot for reuse
+- Only leaf nodes (no children) can be deleted.
+- The *trigger* is the NodeMenu "Delete Node" button (Phase 5); the controller
+  method (`NetworkController::deleteNode`) already exists and frees the slot.
+- Engine limitation: MAX_NODES fixed at 16 — deletion frees the slot for reuse.
+
+### 4.6 Connection Weight Model (scaleFactor)
+
+- Every connection stores a persistent `scaleFactor`; its displayed weight is
+  derived: `weight = calcWeight(distance, scaleFactor)`.
+- Dragging a node recomputes the weights of its incoming and outgoing
+  connections from their scale factors (faithful to the legacy behaviour, where
+  distance encodes coupling strength).
+- Parent-child edges default to `newParentChildConnWeightScale` (1.0); input
+  edges default to `newConnWeightScale` (0.0).
+- Phase 5's connection-weight slider edits the scale factor (not the raw
+  weight), then recomputes the weight.
 
 ---
 
@@ -504,7 +539,7 @@ Parameter naming convention: prefix with `node_N_` for clean sorting in DAW para
 
 ### 7.4 Visual Polish
 
-- Double-buffered rendering via OpenGL FBO — no flicker
+- Single software `juce::Graphics` paint pass — no flicker (no GL/FBO needed)
 - Node hover: subtle glow/outline on mouse hover before click
 - Connection hover: highlight path, show weight tooltip
 - Smooth state transitions: interpolate node position on drag
@@ -539,7 +574,7 @@ Parameter naming convention: prefix with `node_N_` for clean sorting in DAW para
 | Undo/Redo via `juce::UndoManager` | Low | Nice DAW integration but not MVP |
 | Standalone build target | Low | Primary use is DAW plugin |
 | Internal FM synthesis (MatsuSynth) | Low | MIDI-out-only for now |
-| Cross-backend rendering (Metal/DX) | Low | OpenGL works everywhere in JUCE 8 |
+| Cross-backend rendering (Metal/DX) | Low | Software `juce::Graphics` already covers all platforms |
 | Preset morphing / interpolation | Low | Future creative feature |
 | MIDI CC output (mod wheel per node, etc.) | Low | Beyond note events |
 | Python bindings for CPGLib | Low | Already partially in CPGLib repo |

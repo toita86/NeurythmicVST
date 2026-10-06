@@ -21,6 +21,7 @@ add_executable(NeurythmicTests
   source/NeurythmicTest.cpp
   source/MidiOutputTest.cpp
   source/GraphGeometryTest.cpp
+  source/InteractionTest.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginProcessor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginEditor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/ConfigManager.cpp

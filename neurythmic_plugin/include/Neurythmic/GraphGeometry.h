@@ -78,4 +78,42 @@ float getNodeBrightness(float intensity, const ConfigManager& cfg);
 // Legacy `makeConnectionID`: ((from + 1) * 1000) + to.
 int makeConnectionID(int fromId, int toId);
 
+// One connection's pixel-space geometry, shared by the renderer and the
+// hit-tester so the clickable region always matches the drawn shape.
+struct ConnectionGeometry {
+  bool isParent = false;
+  Vec2 start;      // draw start (projected onto the source circumference)
+  Vec2 end;        // draw end (projected onto the target circumference)
+  Vec2 arcCentre;  // input edges only
+  float radius = 0.0f;
+  float startAngle = 0.0f;
+  float endAngle = 0.0f;
+  Vec2 arrowTip;  // arrowhead tip (target-side circumference)
+  float arrowAngleDeg = 0.0f;
+};
+
+// Builds the same geometry the renderer uses: parent-child edges are projected
+// straight segments, input edges reuse `makeInputEdge`.
+ConnectionGeometry makeConnectionGeometry(Vec2 from,
+                                          Vec2 to,
+                                          bool isParent,
+                                          float scaling,
+                                          const ConfigManager& cfg);
+
+// Legacy `isStraightConnectionAtPoint`: point-in-quadrilateral raycast against
+// the segment `start..end` widened perpendicular by `clickableWidth`/2.
+bool isStraightConnectionAtPoint(Vec2 point,
+                                 Vec2 start,
+                                 Vec2 end,
+                                 float clickableWidth);
+
+// Legacy `isCurvedConnectionAtPoint`: point within `radius ± clickableWidth`
+// of the arc centre, and within the `startAngle..endAngle` span.
+bool isCurvedConnectionAtPoint(Vec2 point,
+                               Vec2 arcCentre,
+                               float radius,
+                               float startAngle,
+                               float endAngle,
+                               float clickableWidth);
+
 }  // namespace neurythmic::GraphGeometry

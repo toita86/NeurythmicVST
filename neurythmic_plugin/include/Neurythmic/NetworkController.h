@@ -1,5 +1,8 @@
 #pragma once
 
+#include <map>
+#include <set>
+#include <utility>
 #include <vector>
 
 #include <juce_core/juce_core.h>
@@ -64,14 +67,40 @@ public:
   // Connection lifecycle
   void addConnection(int from, int to);
   void removeConnection(int from, int to);
-  void updateConnectionWeight(int from, int to, double weight);
+  void setConnectionScaleFactor(int from, int to, double scale);
   void updateConnectionPhase(int from, int to, double phase);
   double calcWeight(int from, int to, double scale) const;
+  bool getIsConnected(int from, int to) const;
+  // Shift+click: remove if already connected (and not the parent edge),
+  // otherwise add with the default input-edge scale factor.
+  void toggleConnection(int from, int to);
 
   // Position + hit testing
   void moveNode(int nodeId, juce::Point<float> pos);
   int isNodeAtPoint(juce::Point<float> pos) const;
   bool canIDragHere(juce::Point<float> pos, int nodeId) const;
+  // Connection hit test in pixel space (matches the rendered geometry). Returns
+  // the (sourceId, targetId) pair, or {-1, -1} when nothing is hit.
+  std::pair<int, int> connectionAtPoint(juce::Point<float> pixelPos,
+                                        float minDim) const;
+
+  // Selection (UI-transient; never serialized)
+  bool isNodeSelected(int nodeId) const;
+  void setNodeSelected(int nodeId, bool selected);
+  bool toggleNodeSelected(int nodeId);
+  void clearNodeSelection();
+  void selectConnection(int from, int to);
+  bool isConnectionSelected(int from, int to) const;
+  void clearSelection();
+
+  // Drag (normalised coordinates)
+  void setNodePositionOffsets(juce::Point<float> pos);
+  void moveSelectedNodes(juce::Point<float> pos);
+  void moveAllNodes(juce::Point<float> pos);
+  void endMoveAllNodes();
+
+  // Reset a node to its engine defaults (Alt+click).
+  void resetNode(int nodeId);
 
   // Focus
   void setFocus(Focus newFocus);
@@ -89,6 +118,7 @@ public:
   juce::Point<float> getNodePosition(int nodeId) const;
   double getNodeFrequency(int nodeId) const;  // reads the tree freq property
   int getNodeBarDivision(int nodeId) const;   // engine quantiser bar division
+  int getNodeParent(int nodeId) const;  // reads the tree parentId property
 
   // Connection enumeration for the renderer (source of truth = ValueTree).
   struct ConnectionInfo {
@@ -113,9 +143,17 @@ private:
   Focus _prevFocus;
   double _frameRate;
 
+  std::set<int> _selectedNodes;
+  int _selectedConnectionFrom = -1;
+  int _selectedConnectionTo = -1;
+  std::vector<juce::Point<float>> _clickOffsets;
+  bool _draggingAll = false;
+
   int nextFreeNodeId() const;
   juce::Point<float> nodePosition(int nodeId) const;
   void setNodePosition(int nodeId, juce::Point<float> pos);
+  double getConnectionScaleFactor(int from, int to) const;
+  void recomputeConnectionWeight(int from, int to);
 
   juce::Point<float> positionNewNode(int parentId);
   juce::Point<float> positionFirstNewNode(int parentId);
