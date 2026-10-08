@@ -324,7 +324,10 @@ struct Focus {
 - Additional themes: BigFont, Warning (red), Blue
 - Layout: icon row at top, content area below fills remaining space
 
-### 5.2 MainMenu (Right Sidebar, Width = 270px)
+### 5.2 MainMenu (Docked Right Sidebar, Toggleable, Width = 270px)
+
+- Docked on the right edge; the network view resizes into the remaining area.
+- Toggleable: hidden via the ✕ tab, re-shown via a tab/gear button.
 
 ```
 ┌─────────────────────────────────────┐
@@ -355,7 +358,7 @@ struct Focus {
 
 ```
 ┌─────────────────────────────────────┐
-│  [Node]  [Constraint]  [MIDI]       │  ← SVG tab bar
+│  [Node]  [Constraint]               │  ← SVG tab bar (MIDI tab → Phase 6)
 ├─────────────────────────────────────┤
 │                                     │
 │  Tab 0 — Node:                      │
@@ -381,23 +384,10 @@ struct Focus {
 │  │  ConstraintGUI              │    │  ← Custom interactive grid widget
 │  │  (grid lines visualization) │    │
 │  └─────────────────────────────┘    │
-│                                     │
-│  Tab 2 — MIDI:                      │
-│  Voice Preset: [1][2][3][4][5]      │  ← Matrix (voice selection)
-│                   [6][7][8]         │
-│  ┌─────────────────────────────┐    │
-│  │  Piano Keyboard             │    │  ← juce::MidiKeyboardComponent
-│  │  (2 octaves)                │    │     (note selection)
-│  └─────────────────────────────┘    │
-│  Octave: [-1] [0] [+1] ... [+5]    │  ← Matrix (octave shift)
-│  Attack: [====●==] 10ms             │  ← Slider (2–2000ms)
-│  Decay:  [=====●=====] 300ms        │  ← Slider (50–2000ms)
-│  Velocity:[====●==] 100             │  ← Slider (0–127)
-│  Env Mode:[ADSR] [Neural]           │  ← Toggle
 └─────────────────────────────────────┘
 ```
 
-Position: anchored to right-click cursor position, constrained to plugin window bounds.
+Position: anchored to right-click cursor position, constrained to plugin window bounds. The MIDI tab (note/piano, octave, attack, decay, velocity, env mode) is deferred to Phase 6 — see §6.5.
 
 ### 5.4 ConnectionMenu (On Connection Right-Click)
 
@@ -408,6 +398,12 @@ Phase:  [====●===] 0.25        ← Slider (0–1)
 ```
 
 ### 5.5 Custom Widget Implementations
+
+- Strategy: JUCE stock controls (`Slider`, `TextButton`, `ToggleButton`,
+  `ComboBox`, `MidiKeyboardComponent`) where visually faithful; custom
+  `juce::Component` subclasses for the matrix/radio widgets below and
+  `ConstraintGUI`.
+- Shared dark-theme constants (see §5.1) used across all widgets.
 
 **FrequencyMatrix** (`juce::Component` subclass):
 - 2 rows × 5 columns grid of buttons
@@ -440,6 +436,10 @@ Phase:  [====●===] 0.25        ← Slider (0–1)
 
 ### 5.6 Menu Lifecycle
 
+- Context menus (NodeMenu, ConnectionMenu) rendered in a `juce::CallOutBox`
+  (arrow hidden) anchored to the right-click cursor; it provides outside-click
+  dismissal, Escape-to-close and screen-edge clamping. If the visual result is
+  not faithful, fall back to a hand-rolled floating `Component`.
 - Open on right-click → create `juce::Component` at cursor position
 - Tab switching stores current values before switching
 - Close on: click outside, press Escape, or close button (✕)
@@ -504,6 +504,26 @@ class MixerChannel : public juce::Component {
 - Root frequency display (read-only, set via root node params or DAW automation)
 - Current BPM display (from host or internal fallback)
 - Engine Start/Stop button
+
+### 6.5 NodeMenu MIDI Tab (deferred from Phase 5)
+
+- Adds a third `[MIDI]` tab to the NodeMenu (see §5.3) once its backing lands.
+- Requires per-node MIDI voice state and `MidiOutput` support that does not exist
+  yet: per-node note/pitch, octave, velocity, attack/decay, and env mode.
+- Backing work: extend the ValueTree (per-node MIDI props), `MidiOutput`
+  (per-node note/velocity/envelope instead of `baseNote + nodeId`), and the
+  controller mutators. Must be reconciled with the existing global
+  `DrumMachine`/`PerChannel` routing and `Amplitude`/`Constant` velocity modes.
+
+```
+Voice Preset: [1][2][3][4][5][6][7][8]  ← Matrix (voice selection)
+Piano Keyboard (2 octaves)              ← juce::MidiKeyboardComponent (note selection)
+Octave: [-1] [0] [+1] ... [+5]          ← Matrix (octave shift)
+Attack: [====●==] 10ms                  ← Slider (2–2000ms)
+Decay:  [=====●=====] 300ms             ← Slider (50–2000ms)
+Velocity:[====●==] 100                  ← Slider (0–127)
+Env Mode:[ADSR] [Neural]                ← Toggle
+```
 
 ---
 

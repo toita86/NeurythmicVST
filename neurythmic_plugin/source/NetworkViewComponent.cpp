@@ -3,10 +3,13 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <memory>
 
 #include "../include/Neurythmic/GraphGeometry.h"
 #include "NeurythmicPluginAssets.h"
 #include "../include/Neurythmic/NetworkState.h"
+#include "../include/Neurythmic/NodeMenu.h"
+#include "../include/Neurythmic/ConnectionMenu.h"
 
 namespace neurythmic {
 
@@ -246,18 +249,29 @@ void NetworkViewComponent::mouseDown(const juce::MouseEvent& e) {
   const juce::Point<float> norm = toNormalised(pixel, minDim);
   const int nodeId = _controller.isNodeAtPoint(norm);
 
-  // Right-click: select + focus only; the context menu arrives in Phase 5.
+  // Right-click: select + focus, then open the context menu.
   if (e.mods.isRightButtonDown()) {
     if (nodeId >= 0) {
       _controller.clearSelection();
       _controller.setNodeSelected(nodeId, true);
       focusNode(nodeId, pixel);
+      juce::CallOutBox::launchAsynchronously(
+          std::make_unique<NodeMenu>(_controller, nodeId),
+          juce::Rectangle<int>(static_cast<int>(pixel.getX()),
+                               static_cast<int>(pixel.getY()), 1, 1),
+          this);
     } else {
       const auto conn = _controller.connectionAtPoint(pixel, minDim);
       if (conn.first >= 0) {
         _controller.clearSelection();
         _controller.selectConnection(conn.first, conn.second);
         focusConnection(conn.first, conn.second, pixel);
+        juce::CallOutBox::launchAsynchronously(
+            std::make_unique<ConnectionMenu>(_controller, conn.first,
+                                             conn.second),
+            juce::Rectangle<int>(static_cast<int>(pixel.getX()),
+                                 static_cast<int>(pixel.getY()), 1, 1),
+            this);
       } else {
         _controller.clearSelection();
         _controller.clearFocus();

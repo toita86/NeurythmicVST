@@ -75,6 +75,28 @@ public:
   // otherwise add with the default input-edge scale factor.
   void toggleConnection(int from, int to);
 
+  // Node parameter control (Phase 5 menus; ValueTree first, engine second)
+  void setNodeFrequency(int nodeId, double freq, bool inherit);
+  void setNodeSelfNoise(int nodeId, double amount);
+  double getNodeSelfNoise(int nodeId) const;
+  void setNodePhaseOffset(int nodeId, double phase);
+  double getNodePhaseOffset(int nodeId) const;
+  void setNodeSynchMode(int nodeId, MatsuNode::synchMode mode);
+  MatsuNode::synchMode getNodeSynchMode(int nodeId) const;
+  void setNodeQuantiseGrid(int nodeId, MatsuokaEngine::gridType grid);
+  MatsuokaEngine::gridType getNodeQuantiseGrid(int nodeId) const;
+  void setNodeQuantiseMultiple(int nodeId, float mult);
+  float getNodeQuantiseMultiple(int nodeId) const;
+  void setNodeQuantiseOffset(int nodeId, float off);
+  float getNodeQuantiseOffset(int nodeId) const;
+  void setNodeQuantiseAmount(int nodeId, float amount);
+  float getNodeQuantiseAmount(int nodeId) const;
+
+  // Connection menu getters
+  double getConnectionWeight(int from, int to) const;
+  double getConnectionPhase(int from, int to) const;
+  double getConnectionScaleFactor(int from, int to) const;
+
   // Position + hit testing
   void moveNode(int nodeId, juce::Point<float> pos);
   int isNodeAtPoint(juce::Point<float> pos) const;
@@ -152,8 +174,8 @@ private:
   int nextFreeNodeId() const;
   juce::Point<float> nodePosition(int nodeId) const;
   void setNodePosition(int nodeId, juce::Point<float> pos);
-  double getConnectionScaleFactor(int from, int to) const;
   void recomputeConnectionWeight(int from, int to);
+  void setNodeParameterDefaults(juce::ValueTree node);
 
   juce::Point<float> positionNewNode(int parentId);
   juce::Point<float> positionFirstNewNode(int parentId);

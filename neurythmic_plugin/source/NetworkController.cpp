@@ -41,6 +41,7 @@ NetworkController::NetworkController(MatsuokaEngine& engine,
       NetworkState::getNode(_network, NetworkState::kRootNodeId);
   root.setProperty(NetworkState::Props::freq, _engine.getNodeFrequency(0),
                    nullptr);
+  setNodeParameterDefaults(root);
 }
 
 std::vector<int> NetworkController::getNodeIds() const {
@@ -117,6 +118,7 @@ int NetworkController::createChild(int parentId) {
   juce::ValueTree node = NetworkState::createNode(_network, newId, parentId,
                                                   pos.getX(), pos.getY());
   node.setProperty(NetworkState::Props::freq, freq, nullptr);
+  setNodeParameterDefaults(node);
 
   double weight =
       calcWeight(parentId, newId, _config.newParentChildConnWeightScale);
@@ -171,6 +173,7 @@ void NetworkController::clear() {
       NetworkState::getNode(_network, NetworkState::kRootNodeId);
   root.setProperty(NetworkState::Props::freq, _engine.getNodeFrequency(0),
                    nullptr);
+  setNodeParameterDefaults(root);
   _engine.clear();
   _engine.doQueuedActions();
 }
@@ -248,6 +251,15 @@ void NetworkController::rebuild(const juce::ValueTree& newRoot) {
     _engine.setNodeSynchMode(
         id, static_cast<MatsuNode::synchMode>(
                 static_cast<int>(n.getProperty(Props::synchMode))));
+    _engine.setNodeQuantiser_Grid(
+        id, static_cast<MatsuokaEngine::gridType>(
+                static_cast<int>(n.getProperty(Props::quantGrid))));
+    _engine.setNodeQuantiser_Multiple(
+        id, static_cast<float>(n.getProperty(Props::quantMultiple)));
+    _engine.setNodeQuantiser_Offset(
+        id, static_cast<float>(n.getProperty(Props::quantOffset)));
+    _engine.setQuantiseAmount(
+        id, static_cast<float>(n.getProperty(Props::quantAmount)));
   });
 
   _engine.doQueuedActions();
@@ -342,6 +354,161 @@ void NetworkController::updateConnectionPhase(int from, int to, double phase) {
     conn.setProperty(NetworkState::Props::phase, phase, nullptr);
   _engine.setConnectionPhaseOffset(from, to, phase);
   _engine.doQueuedActions();
+}
+
+// node parameters (Phase 5 menus) ----------------------------------------
+void NetworkController::setNodeFrequency(int nodeId,
+                                         double freq,
+                                         bool inherit) {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return;
+  node.setProperty(NetworkState::Props::freq, freq, nullptr);
+  _engine.setNodeFrequency(static_cast<unsigned>(nodeId), freq, inherit);
+  _engine.doQueuedActions();
+}
+
+void NetworkController::setNodeSelfNoise(int nodeId, double amount) {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return;
+  node.setProperty(NetworkState::Props::noise, amount, nullptr);
+  _engine.setNodeSelfNoise(static_cast<unsigned>(nodeId), amount);
+  _engine.doQueuedActions();
+}
+
+double NetworkController::getNodeSelfNoise(int nodeId) const {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return 0.0;
+  return static_cast<double>(node.getProperty(NetworkState::Props::noise));
+}
+
+void NetworkController::setNodePhaseOffset(int nodeId, double phase) {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return;
+  node.setProperty(NetworkState::Props::phaseOffset, phase, nullptr);
+  _engine.setNodePhaseOffset(static_cast<unsigned>(nodeId), phase);
+  _engine.doQueuedActions();
+}
+
+double NetworkController::getNodePhaseOffset(int nodeId) const {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return 0.0;
+  return static_cast<double>(
+      node.getProperty(NetworkState::Props::phaseOffset));
+}
+
+void NetworkController::setNodeSynchMode(int nodeId,
+                                         MatsuNode::synchMode mode) {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return;
+  node.setProperty(NetworkState::Props::synchMode, static_cast<int>(mode),
+                   nullptr);
+  _engine.setNodeSynchMode(static_cast<unsigned>(nodeId), mode);
+  _engine.doQueuedActions();
+}
+
+MatsuNode::synchMode NetworkController::getNodeSynchMode(int nodeId) const {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return MatsuNode::synchMode::free;
+  return static_cast<MatsuNode::synchMode>(
+      static_cast<int>(node.getProperty(NetworkState::Props::synchMode)));
+}
+
+void NetworkController::setNodeQuantiseGrid(int nodeId,
+                                            MatsuokaEngine::gridType grid) {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return;
+  node.setProperty(NetworkState::Props::quantGrid, static_cast<int>(grid),
+                   nullptr);
+  _engine.setNodeQuantiser_Grid(static_cast<unsigned>(nodeId), grid);
+  _engine.doQueuedActions();
+}
+
+MatsuokaEngine::gridType NetworkController::getNodeQuantiseGrid(
+    int nodeId) const {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return MatsuokaEngine::gridType::unQuantised;
+  return static_cast<MatsuokaEngine::gridType>(
+      static_cast<int>(node.getProperty(NetworkState::Props::quantGrid)));
+}
+
+void NetworkController::setNodeQuantiseMultiple(int nodeId, float mult) {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return;
+  node.setProperty(NetworkState::Props::quantMultiple, mult, nullptr);
+  _engine.setNodeQuantiser_Multiple(static_cast<unsigned>(nodeId), mult);
+  _engine.doQueuedActions();
+}
+
+float NetworkController::getNodeQuantiseMultiple(int nodeId) const {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return 0.0f;
+  return static_cast<float>(
+      node.getProperty(NetworkState::Props::quantMultiple));
+}
+
+void NetworkController::setNodeQuantiseOffset(int nodeId, float off) {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return;
+  node.setProperty(NetworkState::Props::quantOffset, off, nullptr);
+  _engine.setNodeQuantiser_Offset(static_cast<unsigned>(nodeId), off);
+  _engine.doQueuedActions();
+}
+
+float NetworkController::getNodeQuantiseOffset(int nodeId) const {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return 0.0f;
+  return static_cast<float>(node.getProperty(NetworkState::Props::quantOffset));
+}
+
+void NetworkController::setNodeQuantiseAmount(int nodeId, float amount) {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return;
+  node.setProperty(NetworkState::Props::quantAmount, amount, nullptr);
+  _engine.setQuantiseAmount(static_cast<unsigned>(nodeId), amount);
+  _engine.doQueuedActions();
+}
+
+float NetworkController::getNodeQuantiseAmount(int nodeId) const {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return 0.0f;
+  return static_cast<float>(node.getProperty(NetworkState::Props::quantAmount));
+}
+
+double NetworkController::getConnectionWeight(int from, int to) const {
+  juce::ValueTree target = NetworkState::getNode(_network, to);
+  if (!target.isValid())
+    return 0.0;
+  juce::ValueTree conn =
+      target.getChildWithProperty(NetworkState::Props::sourceId, from);
+  if (!conn.isValid())
+    return 0.0;
+  return static_cast<double>(conn.getProperty(NetworkState::Props::weight));
+}
+
+double NetworkController::getConnectionPhase(int from, int to) const {
+  juce::ValueTree target = NetworkState::getNode(_network, to);
+  if (!target.isValid())
+    return 0.0;
+  juce::ValueTree conn =
+      target.getChildWithProperty(NetworkState::Props::sourceId, from);
+  if (!conn.isValid())
+    return 0.0;
+  return static_cast<double>(conn.getProperty(NetworkState::Props::phase));
 }
 
 // position + hit testing + focus ---------------------------------------
@@ -594,6 +761,16 @@ void NetworkController::recomputeConnectionWeight(int from, int to) {
   const double weight = calcWeight(from, to, scale);
   conn.setProperty(NetworkState::Props::weight, weight, nullptr);
   _engine.setConnection(from, to, weight);
+}
+
+void NetworkController::setNodeParameterDefaults(juce::ValueTree node) {
+  node.setProperty(NetworkState::Props::noise, 0.0, nullptr);
+  node.setProperty(NetworkState::Props::phaseOffset, 0.0, nullptr);
+  node.setProperty(NetworkState::Props::synchMode, 0, nullptr);  // free
+  node.setProperty(NetworkState::Props::quantGrid, 0, nullptr);  // unQuantised
+  node.setProperty(NetworkState::Props::quantMultiple, 1.0, nullptr);
+  node.setProperty(NetworkState::Props::quantOffset, 0.0, nullptr);
+  node.setProperty(NetworkState::Props::quantAmount, 1.0, nullptr);
 }
 
 juce::Point<float> NetworkController::positionNewNode(int parentId) {

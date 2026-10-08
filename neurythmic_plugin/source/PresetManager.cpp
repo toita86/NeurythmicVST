@@ -1,7 +1,7 @@
 #include "../include/Neurythmic/PresetManager.h"
+
 #include <functional>
 #include <memory>
-#include "../include/Neurythmic/ConfigManager.h"
 
 namespace neurythmic {
 PresetManager::PresetManager(NetworkController& controller)
@@ -29,37 +29,39 @@ bool PresetManager::loadPreset(const juce::File& file) {
 
 void PresetManager::browseForSave(
     std::function<void(const juce::File&)> onComplete) {
-  auto chooser = std::make_shared<juce::FileChooser>(
-      "Save preset...", juce::File(ConfigManager::get().defaultPresetFile),
-      "*.nprs");
-  chooser->launchAsync(juce::FileBrowserComponent::saveMode |
-                           juce::FileBrowserComponent::canSelectFiles,
-                       [this, onComplete](const juce::FileChooser& c) {
-                         juce::File result = c.getResult();
-                         if (result != juce::File()) {
-                           if (result.getFileExtension() != ".nprs")
-                             result = result.withFileExtension(".nprs");
-                           savePreset(result);
-                         }
-                         if (onComplete)
-                           onComplete(result);
-                       });
+  _activeChooser = std::make_shared<juce::FileChooser>(
+      "Save preset...",
+      juce::File::getSpecialLocation(juce::File::userHomeDirectory), "*.nprs",
+      false);
+  _activeChooser->launchAsync(juce::FileBrowserComponent::saveMode |
+                                  juce::FileBrowserComponent::canSelectFiles,
+                              [this, onComplete](const juce::FileChooser& c) {
+                                juce::File result = c.getResult();
+                                if (result != juce::File()) {
+                                  if (result.getFileExtension() != ".nprs")
+                                    result = result.withFileExtension(".nprs");
+                                  savePreset(result);
+                                }
+                                if (onComplete)
+                                  onComplete(result);
+                              });
 }
 
 void PresetManager::browseForLoad(
     std::function<void(const juce::File&)> onComplete) {
-  auto chooser = std::make_shared<juce::FileChooser>(
-      "Load preset...", juce::File(ConfigManager::get().defaultPresetFile),
-      "*.nprs");
-  chooser->launchAsync(juce::FileBrowserComponent::openMode |
-                           juce::FileBrowserComponent::canSelectFiles,
-                       [this, onComplete](const juce::FileChooser& c) {
-                         juce::File result = c.getResult();
-                         if (result != juce::File())
-                           loadPreset(result);
-                         if (onComplete)
-                           onComplete(result);
-                       });
+  _activeChooser = std::make_shared<juce::FileChooser>(
+      "Load preset...",
+      juce::File::getSpecialLocation(juce::File::userHomeDirectory), "*.nprs",
+      false);
+  _activeChooser->launchAsync(juce::FileBrowserComponent::openMode |
+                                  juce::FileBrowserComponent::canSelectFiles,
+                              [this, onComplete](const juce::FileChooser& c) {
+                                juce::File result = c.getResult();
+                                if (result != juce::File())
+                                  loadPreset(result);
+                                if (onComplete)
+                                  onComplete(result);
+                              });
 }
 
 }  // namespace neurythmic
