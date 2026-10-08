@@ -95,6 +95,10 @@ double MatsuokaEngine::getNodeSelfNoise(unsigned nodeID) const {
   return _cpg.getNode(nodeID).getSelfNoiseAmount();
 }
 
+MatsuNode::synchMode MatsuokaEngine::getNodeSynchMode(unsigned nodeID) const {
+  return _cpg.getNodeSynchMode(nodeID);
+}
+
 double MatsuokaEngine::getNodeInputPhase(unsigned nodeID,
                                          unsigned inputID) const {
   auto& node = _cpg.getNode(nodeID);

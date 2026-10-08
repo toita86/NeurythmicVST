@@ -364,7 +364,7 @@ void CPG::setNodeSynchMode(unsigned nodeID, MatsuNode::synchMode mode) {
   _nodes[nodeID].setSynchMode(mode);
 }
 
-MatsuNode::synchMode CPG::getNodeSynchMode(unsigned nodeID) {
+MatsuNode::synchMode CPG::getNodeSynchMode(unsigned nodeID) const {
   return _nodes[nodeID].getSynchMode();
 }
 

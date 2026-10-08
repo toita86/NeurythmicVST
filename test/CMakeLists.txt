@@ -22,6 +22,7 @@ add_executable(NeurythmicTests
   source/MidiOutputTest.cpp
   source/GraphGeometryTest.cpp
   source/InteractionTest.cpp
+  source/MenuTest.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginProcessor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginEditor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/ConfigManager.cpp
@@ -33,6 +34,12 @@ add_executable(NeurythmicTests
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/TempoSource.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/GraphGeometry.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NetworkViewComponent.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/IconButton.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/RadioButtonMatrix.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/ConstraintGUI.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NodeMenu.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/ConnectionMenu.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/MainMenu.cpp
 )
 
 target_include_directories(NeurythmicTests PRIVATE

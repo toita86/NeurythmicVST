@@ -182,7 +182,7 @@ public:
   void resetNodeChangeFlag_Inputs(unsigned nodeID);
 
   void setNodeSynchMode(unsigned nodeID, MatsuNode::synchMode mode);
-  MatsuNode::synchMode getNodeSynchMode(unsigned nodeID);
+  MatsuNode::synchMode getNodeSynchMode(unsigned nodeID) const;
 
   unsigned getNextNodeID();
 

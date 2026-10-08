@@ -112,6 +112,9 @@ public:
   /// returns the amplitude of the noise input to the requested node
   double getNodeSelfNoise(unsigned nodeID) const;
 
+  /// returns the synchronisation mode of the requested node
+  MatsuNode::synchMode getNodeSynchMode(unsigned nodeID) const;
+
   /// returns the phase offset of the connection to node nodeID, from node
   /// inputID (0-1)
   double getNodeInputPhase(unsigned nodeID, unsigned inputID) const;
