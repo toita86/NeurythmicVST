@@ -387,7 +387,7 @@ struct Focus {
 └─────────────────────────────────────┘
 ```
 
-Position: anchored to right-click cursor position, constrained to plugin window bounds. The MIDI tab (note/piano, octave, attack, decay, velocity, env mode) is deferred to Phase 6 — see §6.5.
+Position: anchored to right-click cursor position, constrained to plugin window bounds. The MIDI tab (note/piano, octave, shared velocity) is added in Phase 6 — see §6.9.
 
 ### 5.4 ConnectionMenu (On Connection Right-Click)
 
@@ -448,82 +448,115 @@ Phase:  [====●===] 0.25        ← Slider (0–1)
 
 ---
 
-## Phase 6 — Mixer Panel 
+## Phase 6 — Mixer Panel & Per-Node MIDI
 
-**Goal:** Per-node volume/mute/solo, master controls.
+**Goal:** Per-node volume/mute/solo and per-node MIDI note selection, plus master
+controls.
 
-### 6.1 MixerPanel (Inside MainMenu Tab 1)
+### 6.1 Scope note (MIDI-only)
+
+- The legacy frontend drove a synth engine (`setNodeVol` / `setNodeAttack` /
+  `setNodeDecay` / `setNodeNeuralEnv` / `setNodeMute` / `setNodePitch` /
+  `setNodePreset`). This plugin is a MIDI instrument: it emits note events only.
+- The synth-only parameters — Voice Preset, Attack, Decay and Env Mode
+  (`NEURALENV`) — are **dropped**. The MIDI tab is reduced to per-node note
+  (piano + octave); per-node velocity is the shared mixer volume.
+
+### 6.2 Data Model (Node properties)
+
+New `NetworkState::Props` on `Node`:
+
+| Property | Type | Default | Meaning |
+|----------|------|---------|---------|
+| `volume` | float | `newNodeVolumeInit` (0.6) | shared mixer fader / velocity scale, 0.0–1.5 |
+| `midiNote` | int | `midiTriggerNote + nodeId` | per-node note override (0–127) |
+| `muted` | bool | false | channel mute |
+
+- **Solo is UI/session-transient**: held in `NetworkController` (like selection),
+  never serialized.
+- Persisted in presets / DAW state: `volume`, `midiNote`, `muted`. Solo is not.
+
+### 6.3 Note × routing reconciliation (the two MIDI routing modes)
+
+- `MidiOutput` already has two routing modes (`DrumMachine`, `PerChannel`) and two
+  velocity modes (`Constant`, `Amplitude`) — the two MIDI-mode pairs.
+- Per-node `midiNote` **overrides** `noteFor()` in **both** routing modes; routing
+  only selects the channel:
+  - `DrumMachine` → channel `midiDrumChannel`;
+  - `PerChannel` → channel `nodeId + 1`.
+- The default per-node note is `midiTriggerNote + nodeId`, so drum behaviour is
+  unchanged until the user edits the note. (This intentionally changes the
+  `PerChannel` default from a fixed `baseNote` to `baseNote + nodeId`.)
+- Velocity: `velocityFor` multiplies by the per-node gain (`volume`). Mute/solo
+  set a per-node emit gate.
+
+### 6.4 Real-time-safe delivery
+
+- The `ValueTree` is message-thread only; the audio thread never reads it.
+- New header-only `MixerSnapshot`: 16-wide `std::atomic` arrays (note, gain,
+  enabled), owned by `NetworkController` (one instance, mutated on the message
+  thread).
+- Controller mutators write tree → engine → snapshot (message thread).
+- `PluginProcessor::processBlock` copies the snapshot into `MidiOutput` once per
+  block (no lock, no allocation).
+- `rebuild()` / `clear()` repopulate the snapshot from the tree;
+  `createChild` / `deleteNode` update the slot.
+
+### 6.5 MixerPanel (Inside MainMenu Tab 1)
+
+Layout is the legacy horizontal-row form (the sidebar is 270px; vertical-fader
+columns would not fit), inside a vertical `Viewport`:
 
 ```
 ┌─────────────────────────────────────┐
-│  ┌──────┬──────┬──────┬──────┐     │
-│  │ Ch 0 │ Ch 1 │ Ch 2 │ ...  │     │  ← Scrollable if > 6 channels visible
-│  │ Node │ Node │ Node │      │     │
-│  │  1   │  2   │  3   │      │     │
-│  │ [M]  │ [M]  │ [M]  │      │     │  ← Mute toggle (red when active)
-│  │ [S]  │ [S]  │ [S]  │      │     │  ← Solo toggle (yellow when active)
-│  │  ║   │  ║   │  ║   │      │     │  ← Volume fader (vertical slider)
-│  │  ║   │  ║   │  ║   │      │     │
-│  │  ║   │  ║   │  ║   │      │     │
-│  │  85  │  47  │ 100  │      │     │  ← Volume value label
-│  └──────┴──────┴──────┴──────┘     │
-│                                     │
-│  Master Volume: [========●=] 0.8    │  ← Horizontal master fader
+│ [color] Node 1   [==========●] 0.60 │  ← volume slider (horizontal)
+│                    [M] [S]          │  ← mute (red) / solo (yellow)
+│ [color] Node 2   [===●======] 0.40  │
+│ ...                                 │  ← scrolls if > viewport
+├─────────────────────────────────────┤
+│ MASTER           [========●=] 0.80  │
+│ BPM 120   Root 2.00 Hz              │  ← read-only labels
 └─────────────────────────────────────┘
 ```
 
-### 6.2 Channel Component
+### 6.6 MixerChannel component
 
 ```cpp
 class MixerChannel : public juce::Component {
-    juce::TextButton muteButton;
-    juce::TextButton soloButton;
-    juce::Slider volumeFader;     // vertical, 0.001–1.5 range
-    juce::Label nameLabel;        // node label
-    juce::Label valueLabel;       // current volume
-
+    juce::Label nameLabel;
+    juce::Slider volume;      // horizontal, 0.0–1.5
+    juce::TextButton mute, solo;
+    juce::Label valueLabel;
     int nodeId;
-    void resized() override;      // layout: label top, buttons below, fader fills
-    void paint() override;        // dark background with subtle border
-
-    // Solo logic
-    bool isSoloed = false;
-    bool isMuted = false;
 };
 ```
 
-### 6.3 Solo Behavior
+### 6.7 Solo behaviour
 
-- If any channel is soloed → only soloed channels produce MIDI
-- Non-soloed channels are dimmed visually
-- Master solo clear button to unsolo all
+- If any channel is soloed → only soloed channels emit.
+- Effective per-node emit = `!muted && (!anySolo || soloed)`.
+- A master solo-clear button unsolos all.
+- Non-soloed channels are dimmed visually.
 
-### 6.4 Master Controls (in MainMenu CPG tab)
+### 6.8 Master controls (in MainMenu CPG tab)
 
-- Master volume fader: scalar applied to all MIDI velocities
-- Root frequency display (read-only, set via root node params or DAW automation)
-- Current BPM display (from host or internal fallback)
-- Engine Start/Stop button
+- Master volume slider — binds to the existing `masterVolume` APVTS parameter.
+- Root frequency display (read-only).
+- Current BPM display (from host or internal fallback).
+- **No Engine Start/Stop**: in a DAW the host transport is the gate.
 
-### 6.5 NodeMenu MIDI Tab (deferred from Phase 5)
+### 6.9 NodeMenu MIDI Tab
 
-- Adds a third `[MIDI]` tab to the NodeMenu (see §5.3) once its backing lands.
-- Requires per-node MIDI voice state and `MidiOutput` support that does not exist
-  yet: per-node note/pitch, octave, velocity, attack/decay, and env mode.
-- Backing work: extend the ValueTree (per-node MIDI props), `MidiOutput`
-  (per-node note/velocity/envelope instead of `baseNote + nodeId`), and the
-  controller mutators. Must be reconciled with the existing global
-  `DrumMachine`/`PerChannel` routing and `Amplitude`/`Constant` velocity modes.
+Adds a third `[MIDI]` tab to the NodeMenu (see §5.3):
 
 ```
-Voice Preset: [1][2][3][4][5][6][7][8]  ← Matrix (voice selection)
 Piano Keyboard (2 octaves)              ← juce::MidiKeyboardComponent (note selection)
 Octave: [-1] [0] [+1] ... [+5]          ← Matrix (octave shift)
-Attack: [====●==] 10ms                  ← Slider (2–2000ms)
-Decay:  [=====●=====] 300ms             ← Slider (50–2000ms)
-Velocity:[====●==] 100                  ← Slider (0–127)
-Env Mode:[ADSR] [Neural]                ← Toggle
+Velocity:[====●==] 0.60                 ← Slider (shared per-node volume)
 ```
+
+- Note = `octave * 12 + semitone`, stored as the absolute `midiNote`.
+- No voice preset / attack / decay / env mode (synth-only, dropped — see §6.1).
 
 ---
 

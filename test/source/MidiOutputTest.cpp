@@ -69,8 +69,82 @@ TEST(MidiOutput, PerChannelModeRoutesChannelById) {
   EXPECT_EQ(evs[0].channel, 1);
   EXPECT_EQ(evs[0].note, 60);
   EXPECT_EQ(evs[1].channel, 4);
-  EXPECT_EQ(evs[1].note, 60);
+  EXPECT_EQ(evs[1].note, 63);  // Phase 6: per-node note default = base + id
 }
+
+TEST(MidiOutput, PerNodeNoteOverridesDrumRouting) {
+  neurythmic::MidiOutput out(60, 10);
+  out.setNodeNote(3, 48);
+
+  out.fire(3, 1.0f, 0);
+
+  juce::MidiBuffer buffer;
+  out.flush(buffer);
+
+  auto evs = events(buffer);
+  ASSERT_EQ(evs.size(), 1u);
+  EXPECT_EQ(evs[0].channel, 10);
+  EXPECT_EQ(evs[0].note, 48);
+}
+
+TEST(MidiOutput, PerNodeNoteOverridesPerChannelRouting) {
+  neurythmic::MidiOutput out(60, 10);
+  out.setRoutingMode(neurythmic::RoutingMode::PerChannel);
+  out.setNodeNote(3, 48);
+
+  out.fire(3, 1.0f, 0);
+
+  juce::MidiBuffer buffer;
+  out.flush(buffer);
+
+  auto evs = events(buffer);
+  ASSERT_EQ(evs.size(), 1u);
+  EXPECT_EQ(evs[0].channel, 4);
+  EXPECT_EQ(evs[0].note, 48);
+}
+
+TEST(MidiOutput, PerNodeGainScalesVelocity) {
+  neurythmic::MidiOutput out(60, 10);
+  out.setVelocityMode(neurythmic::VelocityMode::Constant);
+  out.setMasterVolume(1.0f);
+  out.setNodeGain(0, 0.5f);
+
+  out.fire(0, 1.0f, 0);  // 1.0 * 0.5 * 127 = 63.5 -> 63
+
+  juce::MidiBuffer buffer;
+  out.flush(buffer);
+
+  auto evs = events(buffer);
+  ASSERT_EQ(evs.size(), 1u);
+  EXPECT_EQ(evs[0].velocity, 63);
+}
+
+TEST(MidiOutput, DisabledNodeDoesNotFire) {
+  neurythmic::MidiOutput out(60, 10);
+  out.setNodeEnabled(0, false);
+
+  out.fire(0, 1.0f, 0);
+
+  juce::MidiBuffer buffer;
+  out.flush(buffer);
+  EXPECT_TRUE(events(buffer).empty());
+}
+
+TEST(MidiOutput, DisablingNodeReleasesHeldNote) {
+  neurythmic::MidiOutput out(60, 10);
+
+  out.fire(0, 1.0f, 0);         // NoteOn
+  out.setNodeEnabled(0, false);  // must release the held note
+
+  juce::MidiBuffer buffer;
+  out.flush(buffer);
+
+  auto evs = events(buffer);
+  ASSERT_EQ(evs.size(), 2u);
+  EXPECT_TRUE(evs[0].isOn);
+  EXPECT_FALSE(evs[1].isOn);
+}
+
 
 TEST(MidiOutput, RetriggerEmitsNoteOffThenNoteOn) {
   neurythmic::MidiOutput out(60, 10);

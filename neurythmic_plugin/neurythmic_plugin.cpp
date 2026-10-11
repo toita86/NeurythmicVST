@@ -20,4 +20,6 @@
 #include "source/ConstraintGUI.cpp"
 #include "source/NodeMenu.cpp"
 #include "source/ConnectionMenu.cpp"
+#include "source/MixerChannel.cpp"
+#include "source/MixerPanel.cpp"
 #include "source/MainMenu.cpp"

@@ -60,6 +60,10 @@ inline const juce::Identifier quantGrid{"quantGrid"};
 inline const juce::Identifier quantMultiple{"quantMultiple"};
 inline const juce::Identifier quantOffset{"quantOffset"};
 inline const juce::Identifier quantAmount{"quantAmount"};
+// Phase 6 per-node mixer / MIDI output properties
+inline const juce::Identifier volume{"volume"};
+inline const juce::Identifier midiNote{"midiNote"};
+inline const juce::Identifier muted{"muted"};
 // Connection properties
 inline const juce::Identifier sourceId{"sourceId"};
 inline const juce::Identifier weight{"weight"};

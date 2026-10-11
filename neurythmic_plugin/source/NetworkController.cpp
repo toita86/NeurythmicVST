@@ -42,6 +42,7 @@ NetworkController::NetworkController(MatsuokaEngine& engine,
   root.setProperty(NetworkState::Props::freq, _engine.getNodeFrequency(0),
                    nullptr);
   setNodeParameterDefaults(root);
+  publishMixerSnapshot();
 }
 
 std::vector<int> NetworkController::getNodeIds() const {
@@ -137,6 +138,7 @@ int NetworkController::createChild(int parentId) {
   _engine.setConnection(parentId, newId, weight);
   _engine.doQueuedActions();
 
+  publishMixerSnapshot();
   return newId;
 }
 
@@ -165,6 +167,9 @@ void NetworkController::deleteNode(int nodeId) {
   NetworkState::removeNode(_network, nodeId);  // ValueTree first
   _engine.deleteNode(nodeId);                  // Engine second
   _engine.doQueuedActions();
+
+  _soloedNodes.erase(nodeId);
+  publishMixerSnapshot();
 }
 
 void NetworkController::clear() {
@@ -174,8 +179,10 @@ void NetworkController::clear() {
   root.setProperty(NetworkState::Props::freq, _engine.getNodeFrequency(0),
                    nullptr);
   setNodeParameterDefaults(root);
+  _soloedNodes.clear();
   _engine.clear();
   _engine.doQueuedActions();
+  publishMixerSnapshot();
 }
 
 // preset loading --------------------------------------------------------------
@@ -265,6 +272,8 @@ void NetworkController::rebuild(const juce::ValueTree& newRoot) {
   _engine.doQueuedActions();
 
   _network = newRoot.createCopy();  // controller owns a deep copy
+  _soloedNodes.clear();
+  publishMixerSnapshot();
 }
 
 // connection lifecycle -------------------------------------------------
@@ -487,6 +496,73 @@ float NetworkController::getNodeQuantiseAmount(int nodeId) const {
   if (!node.isValid())
     return 0.0f;
   return static_cast<float>(node.getProperty(NetworkState::Props::quantAmount));
+}
+
+// per-node mixer / MIDI state (Phase 6) ---------------------------------
+void NetworkController::setNodeVolume(int nodeId, float volume) {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return;
+  node.setProperty(NetworkState::Props::volume, static_cast<double>(volume),
+                   nullptr);
+  publishMixerSnapshot();
+}
+
+float NetworkController::getNodeVolume(int nodeId) const {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return 0.0f;
+  return static_cast<float>(node.getProperty(NetworkState::Props::volume));
+}
+
+void NetworkController::setNodeMidiNote(int nodeId, int note) {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return;
+  node.setProperty(NetworkState::Props::midiNote, juce::jlimit(0, 127, note),
+                   nullptr);
+  publishMixerSnapshot();
+}
+
+int NetworkController::getNodeMidiNote(int nodeId) const {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return -1;
+  return static_cast<int>(node.getProperty(NetworkState::Props::midiNote));
+}
+
+void NetworkController::setNodeMuted(int nodeId, bool muted) {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return;
+  node.setProperty(NetworkState::Props::muted, muted, nullptr);
+  publishMixerSnapshot();
+}
+
+bool NetworkController::getNodeMuted(int nodeId) const {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return false;
+  return static_cast<bool>(node.getProperty(NetworkState::Props::muted));
+}
+
+void NetworkController::setNodeSoloed(int nodeId, bool soloed) {
+  if (!NetworkState::getNode(_network, nodeId).isValid())
+    return;
+  if (soloed)
+    _soloedNodes.insert(nodeId);
+  else
+    _soloedNodes.erase(nodeId);
+  publishMixerSnapshot();
+}
+
+bool NetworkController::getNodeSoloed(int nodeId) const {
+  return _soloedNodes.count(nodeId) != 0;
+}
+
+void NetworkController::clearSolo() {
+  _soloedNodes.clear();
+  publishMixerSnapshot();
 }
 
 double NetworkController::getConnectionWeight(int from, int to) const {
@@ -771,6 +847,34 @@ void NetworkController::setNodeParameterDefaults(juce::ValueTree node) {
   node.setProperty(NetworkState::Props::quantMultiple, 1.0, nullptr);
   node.setProperty(NetworkState::Props::quantOffset, 0.0, nullptr);
   node.setProperty(NetworkState::Props::quantAmount, 1.0, nullptr);
+
+  const int id = static_cast<int>(node.getProperty(NetworkState::Props::id));
+  node.setProperty(NetworkState::Props::volume,
+                   static_cast<double>(_config.newNodeVolumeInit), nullptr);
+  node.setProperty(NetworkState::Props::midiNote, _config.midiTriggerNote + id,
+                   nullptr);
+  node.setProperty(NetworkState::Props::muted, false, nullptr);
+}
+
+void NetworkController::publishMixerSnapshot() {
+  // Disable every slot, then republish only the nodes that exist.
+  for (int id = 0; id < NetworkState::kMaxNodes; ++id)
+    _mixerSnapshot.setEnabled(id, false);
+
+  const bool anySolo = !_soloedNodes.empty();
+  NetworkState::forEachNode(_network, [&](juce::ValueTree n) {
+    const int id = static_cast<int>(n.getProperty(NetworkState::Props::id));
+    const bool muted =
+        static_cast<bool>(n.getProperty(NetworkState::Props::muted));
+    const bool soloed = _soloedNodes.count(id) != 0;
+    const bool enabled = !muted && (!anySolo || soloed);
+
+    _mixerSnapshot.setNote(
+        id, static_cast<int>(n.getProperty(NetworkState::Props::midiNote)));
+    _mixerSnapshot.setGain(
+        id, static_cast<float>(n.getProperty(NetworkState::Props::volume)));
+    _mixerSnapshot.setEnabled(id, enabled);
+  });
 }
 
 juce::Point<float> NetworkController::positionNewNode(int parentId) {

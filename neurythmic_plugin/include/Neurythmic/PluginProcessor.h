@@ -50,6 +50,8 @@ public:
 
   // Getters exposed for the editor
   double getNodeFrequency(unsigned id) const;
+  double getRootFreq() const;  // rootFreq APVTS parameter (Hz)
+  double getBpm() const;       // host tempo when playing, else rootFreq * 60
   NetworkController& getController() { return _controller; }
   const MatsuokaEngine& getEngine() const { return _engine; }
 

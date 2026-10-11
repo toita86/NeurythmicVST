@@ -106,4 +106,18 @@ inline std::vector<juce::String> resolutionLabels(
   return labels;
 }
 
+// MIDI tab (Phase 6): octave/semitone <-> absolute MIDI note. Middle C (C4) is
+// 60, so note = (octave + 1) * 12 + semitone, clamped to the MIDI range.
+inline int midiNoteFromOctaveSemitone(int octave, int semitone) {
+  return juce::jlimit(0, 127, (octave + 1) * 12 + semitone);
+}
+
+inline int noteOctave(int midiNote) {
+  return midiNote / 12 - 1;
+}
+
+inline int noteSemitone(int midiNote) {
+  return ((midiNote % 12) + 12) % 12;
+}
+
 }  // namespace neurythmic::MenuValues

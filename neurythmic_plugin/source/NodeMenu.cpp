@@ -15,6 +15,13 @@ juce::StringArray buildFrequencyLabels() {
   return labels;
 }
 
+juce::StringArray buildOctaveLabels() {
+  juce::StringArray labels;
+  for (int octave = -1; octave <= 5; ++octave)
+    labels.add(juce::String(octave));
+  return labels;
+}
+
 }  // namespace
 
 NodeMenu::NodeMenu(NetworkController& controller, int nodeId)
@@ -23,11 +30,15 @@ NodeMenu::NodeMenu(NetworkController& controller, int nodeId)
       _freqMatrix(buildFrequencyLabels(), 5),
       _syncMatrix({"NONE", "1X", "LOCK"}, 3),
       _gridMatrix({"OFF", "24th", "32nd"}, 3),
-      _resolutionMatrix(juce::StringArray(), 4) {
-  setSize(kWidth, 380);
+      _resolutionMatrix(juce::StringArray(), 4),
+      _keyboard(_keyboardState,
+                juce::MidiKeyboardComponent::horizontalKeyboard),
+      _octaveMatrix(buildOctaveLabels(), 7) {
+  setSize(kWidth, 400);
 
   addAndMakeVisible(_tabNode);
   addAndMakeVisible(_tabConstraint);
+  addAndMakeVisible(_tabMidi);
   addAndMakeVisible(_freqMatrix);
   addAndMakeVisible(_fineTuneLabel);
   addAndMakeVisible(_fineTune);
@@ -46,10 +57,15 @@ NodeMenu::NodeMenu(NetworkController& controller, int nodeId)
   addAndMakeVisible(_resolutionLabel);
   addAndMakeVisible(_resolutionMatrix);
   addAndMakeVisible(_constraintView);
+  addAndMakeVisible(_keyboard);
+  addAndMakeVisible(_octaveLabel);
+  addAndMakeVisible(_octaveMatrix);
+  addAndMakeVisible(_velocityLabel);
+  addAndMakeVisible(_velocity);
 
-  for (auto* label :
-       {&_fineTuneLabel, &_selfNoiseLabel, &_phaseLabel, &_syncLabel,
-        &_freedomLabel, &_gridLabel, &_resolutionLabel}) {
+  for (auto* label : {&_fineTuneLabel, &_selfNoiseLabel, &_phaseLabel,
+                      &_syncLabel, &_freedomLabel, &_gridLabel,
+                      &_resolutionLabel, &_octaveLabel, &_velocityLabel}) {
     label->setFont(juce::Font(juce::FontOptions().withHeight(12.0f)));
     label->setColour(juce::Label::textColourId, MenuTheme::labelColour);
   }
@@ -63,9 +79,11 @@ NodeMenu::NodeMenu(NetworkController& controller, int nodeId)
   styleSlider(_selfNoise, 0.0, 1.0);
   styleSlider(_phase, 0.0, 1.0);
   styleSlider(_freedom, 0.0, 1.0);
+  styleSlider(_velocity, 0.0, 1.5);
 
   _tabNode.onClick = [this] { setTab(0); };
   _tabConstraint.onClick = [this] { setTab(1); };
+  _tabMidi.onClick = [this] { setTab(2); };
 
   _freqMatrix.setListener([this](int idx) {
     const double rootFreq =
@@ -116,6 +134,26 @@ NodeMenu::NodeMenu(NetworkController& controller, int nodeId)
     _constraintView.setGridMultiplier(static_cast<int>(multiples[idx]));
   });
 
+  // MIDI tab
+  _keyboard.setAvailableRange(48, 71);  // C3..B4 (two octaves)
+  _keyboard.setScrollButtonsVisible(false);
+  _keyboard.setKeyWidth(14.0f);
+  _keyboardState.addListener(this);
+
+  _octaveMatrix.setListener([this](int idx) {
+    const int octave = idx - 1;
+    const int semitone =
+        MenuValues::noteSemitone(_controller.getNodeMidiNote(_nodeId));
+    _controller.setNodeMidiNote(
+        _nodeId, MenuValues::midiNoteFromOctaveSemitone(octave, semitone));
+    refreshMidi();
+  });
+
+  _velocity.onValueChange = [this] {
+    _controller.setNodeVolume(_nodeId,
+                              static_cast<float>(_velocity.getValue()));
+  };
+
   // Delete is only valid for a non-root leaf node.
   bool deletable = _nodeId != NetworkState::kRootNodeId;
   if (deletable) {
@@ -129,6 +167,7 @@ NodeMenu::NodeMenu(NetworkController& controller, int nodeId)
 
   refreshFrequency();
   refreshConstraint();
+  refreshMidi();
   setTab(0);
 }
 
@@ -144,8 +183,14 @@ void NodeMenu::setTab(int tab) {
   _tabConstraint.setColour(
       juce::TextButton::buttonColourId,
       tab == 1 ? MenuTheme::downBackground : MenuTheme::background);
+  _tabMidi.setColour(
+      juce::TextButton::buttonColourId,
+      tab == 2 ? MenuTheme::downBackground : MenuTheme::background);
 
   const bool showNode = tab == 0;
+  const bool showConstraint = tab == 1;
+  const bool showMidi = tab == 2;
+
   _freqMatrix.setVisible(showNode);
   _fineTuneLabel.setVisible(showNode);
   _fineTune.setVisible(showNode);
@@ -158,13 +203,19 @@ void NodeMenu::setTab(int tab) {
   _addChild.setVisible(showNode);
   _deleteNode.setVisible(showNode);
 
-  _freedomLabel.setVisible(!showNode);
-  _freedom.setVisible(!showNode);
-  _gridLabel.setVisible(!showNode);
-  _gridMatrix.setVisible(!showNode);
-  _resolutionLabel.setVisible(!showNode);
-  _resolutionMatrix.setVisible(!showNode);
-  _constraintView.setVisible(!showNode);
+  _freedomLabel.setVisible(showConstraint);
+  _freedom.setVisible(showConstraint);
+  _gridLabel.setVisible(showConstraint);
+  _gridMatrix.setVisible(showConstraint);
+  _resolutionLabel.setVisible(showConstraint);
+  _resolutionMatrix.setVisible(showConstraint);
+  _constraintView.setVisible(showConstraint);
+
+  _keyboard.setVisible(showMidi);
+  _octaveLabel.setVisible(showMidi);
+  _octaveMatrix.setVisible(showMidi);
+  _velocityLabel.setVisible(showMidi);
+  _velocity.setVisible(showMidi);
 
   resized();
 }
@@ -214,6 +265,39 @@ void NodeMenu::refreshConstraint() {
                     juce::dontSendNotification);
 }
 
+void NodeMenu::refreshMidi() {
+  const int note = _controller.getNodeMidiNote(_nodeId);
+  if (note < 0)
+    return;
+
+  const int octave = MenuValues::noteOctave(note);
+  _octaveMatrix.setSelected(juce::jlimit(0, 6, octave + 1));
+  _velocity.setValue(_controller.getNodeVolume(_nodeId),
+                     juce::dontSendNotification);
+
+  _updatingKeyboard = true;
+  _keyboardState.allNotesOff(1);
+  if (note >= 48 && note <= 71)
+    _keyboardState.noteOn(1, note, 1.0f);
+  _updatingKeyboard = false;
+}
+
+void NodeMenu::handleNoteOn(juce::MidiKeyboardState*,
+                            int,
+                            int midiNoteNumber,
+                            float) {
+  if (_updatingKeyboard)
+    return;
+  const int octave =
+      MenuValues::noteOctave(_controller.getNodeMidiNote(_nodeId));
+  const int semitone = MenuValues::noteSemitone(midiNoteNumber);
+  _controller.setNodeMidiNote(
+      _nodeId, MenuValues::midiNoteFromOctaveSemitone(octave, semitone));
+  refreshMidi();
+}
+
+void NodeMenu::handleNoteOff(juce::MidiKeyboardState*, int, int, float) {}
+
 void NodeMenu::dismiss() {
   if (auto* box = findParentComponentOfClass<juce::CallOutBox>())
     box->dismiss();
@@ -223,13 +307,17 @@ void NodeMenu::resized() {
   auto area = getLocalBounds().reduced(6);
 
   auto tabRow = area.removeFromTop(26);
-  _tabNode.setBounds(tabRow.removeFromLeft(tabRow.getWidth() / 2).reduced(2));
-  _tabConstraint.setBounds(tabRow.reduced(2));
+  _tabNode.setBounds(tabRow.removeFromLeft(tabRow.getWidth() / 3).reduced(2));
+  _tabConstraint.setBounds(
+      tabRow.removeFromLeft(tabRow.getWidth() / 2).reduced(2));
+  _tabMidi.setBounds(tabRow.reduced(2));
 
   if (_tab == 0)
     layoutNodeTab();
-  else
+  else if (_tab == 1)
     layoutConstraintTab();
+  else
+    layoutMidiTab();
 }
 
 void NodeMenu::layoutNodeTab() {
@@ -290,6 +378,25 @@ void NodeMenu::layoutConstraintTab() {
   area.removeFromTop(6);
 
   _constraintView.setBounds(area.removeFromTop(80));
+}
+
+void NodeMenu::layoutMidiTab() {
+  auto area = getLocalBounds().reduced(6);
+  area.removeFromTop(26 + 6);
+
+  auto row = area.removeFromTop(24);
+  _octaveLabel.setBounds(row.removeFromLeft(60));
+  area.removeFromTop(4);
+
+  _octaveMatrix.setBounds(area.removeFromTop(26));
+  area.removeFromTop(6);
+
+  row = area.removeFromTop(24);
+  _velocityLabel.setBounds(row.removeFromLeft(60));
+  _velocity.setBounds(row);
+  area.removeFromTop(8);
+
+  _keyboard.setBounds(area.removeFromTop(90));
 }
 
 }  // namespace neurythmic
