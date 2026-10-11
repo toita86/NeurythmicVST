@@ -32,6 +32,9 @@ juce::ValueTree createNode(juce::ValueTree root,
   node.setProperty(Props::quantMultiple, 1, nullptr);
   node.setProperty(Props::quantOffset, 0, nullptr);
   node.setProperty(Props::quantAmount, 1.0f, nullptr);
+  node.setProperty(Props::volume, 1.0f, nullptr);
+  node.setProperty(Props::midiNote, nodeId, nullptr);  // placeholder default
+  node.setProperty(Props::muted, false, nullptr);
 
   root.addChild(node, -1, nullptr);
 

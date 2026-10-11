@@ -21,6 +21,12 @@ public:
   void setVelocityMode(VelocityMode mode);
   void setMasterVolume(float volume);  // 0..1
 
+  // Per-node state, copied from MixerSnapshot once per block by the processor
+  // (message-thread values, read here on the audio thread).
+  void setNodeNote(int nodeId, int note);         // 0..127, overrides routing
+  void setNodeGain(int nodeId, float gain);       // velocity scalar
+  void setNodeEnabled(int nodeId, bool enabled);  // false = muted/soloed out
+
   // Registers a node fire at the given sample index. Retriggers: emits a
   // NoteOff of the held note, then a fresh NoteOn.
   void fire(int nodeId, float amplitude, int sampleIndex);
@@ -38,7 +44,7 @@ public:
 private:
   int channelFor(int nodeId) const;
   int noteFor(int nodeId) const;
-  int velocityFor(float amplitude) const;
+  int velocityFor(int nodeId, float amplitude) const;
 
   int _baseNote;
   int _drumChannel;
@@ -52,6 +58,12 @@ private:
     int note = 60;
   };
   std::array<Held, 16> _held;
+
+  // Per-node overrides (default: note = baseNote + id, gain 1, enabled).
+  std::array<int, 16> _nodeNote;
+  std::array<float, 16> _nodeGain;
+  std::array<bool, 16> _nodeEnabled;
+
   juce::MidiBuffer _pending;
 };
 

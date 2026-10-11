@@ -23,6 +23,7 @@ add_executable(NeurythmicTests
   source/GraphGeometryTest.cpp
   source/InteractionTest.cpp
   source/MenuTest.cpp
+  source/MixerTest.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginProcessor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginEditor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/ConfigManager.cpp
@@ -39,6 +40,8 @@ add_executable(NeurythmicTests
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/ConstraintGUI.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/NodeMenu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/ConnectionMenu.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/MixerChannel.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/MixerPanel.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/MainMenu.cpp
 )
 

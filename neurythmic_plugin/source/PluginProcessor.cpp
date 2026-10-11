@@ -1,6 +1,7 @@
 #include "../include/Neurythmic/PluginProcessor.h"
 #include "../include/Neurythmic/PluginEditor.h"
 #include "../include/Neurythmic/ConfigManager.h"
+#include "../include/Neurythmic/NetworkState.h"
 
 namespace neurythmic {
 
@@ -138,6 +139,14 @@ void PluginProcessor::process(juce::MidiBuffer& midiMessages, int numSamples) {
 
   const bool run = !_lastTempo.hasHost || _lastTempo.isPlaying;
 
+  // Mirror the message-thread mixer snapshot into the audio-thread MidiOutput.
+  const auto& snapshot = _controller.getMixerSnapshot();
+  for (int id = 0; id < NetworkState::kMaxNodes; ++id) {
+    _midiOutput.setNodeNote(id, snapshot.note(id));
+    _midiOutput.setNodeGain(id, snapshot.gain(id));
+    _midiOutput.setNodeEnabled(id, snapshot.enabled(id));
+  }
+
   _midiOutput.setMasterVolume(
       _apvts.getRawParameterValue("masterVolume")->load());
   _midiOutput.setVelocityMode(
@@ -218,6 +227,17 @@ bool PluginProcessor::isPlaying() const {
 // Getters exposed for the editor
 double PluginProcessor::getNodeFrequency(unsigned id) const {
   return _engine.getNodeFrequency(id);
+}
+
+double PluginProcessor::getRootFreq() const {
+  return static_cast<double>(_apvts.getRawParameterValue("rootFreq")->load());
+}
+
+double PluginProcessor::getBpm() const {
+  if (_lastTempo.hasHost && _lastTempo.isPlaying)
+    return _lastTempo.bpm;
+  return static_cast<double>(_apvts.getRawParameterValue("rootFreq")->load()) *
+         60.0;
 }
 
 }  // namespace neurythmic

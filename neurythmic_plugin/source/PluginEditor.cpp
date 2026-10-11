@@ -6,7 +6,7 @@ PluginEditor::PluginEditor(PluginProcessor& p)
       _processor(p),
       _networkView(_processor.getController()),
       _presets(_processor.getController()),
-      _mainMenu(_processor.getController(), _presets) {
+      _mainMenu(_processor.getController(), _presets, _processor) {
   addAndMakeVisible(_networkView);
   addAndMakeVisible(_mainMenu);
   addAndMakeVisible(_showMenuButton);
@@ -52,6 +52,8 @@ void PluginEditor::timerCallback() {
   // Always refresh the view so it renders (and re-renders) regardless of
   // transport state. The view rebuilds its scene and triggers a repaint.
   _networkView.update();
+  if (_mainMenu.isVisible())
+    _mainMenu.refresh();
 }
 
 }  // namespace neurythmic

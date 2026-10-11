@@ -10,6 +10,7 @@
 #include "ConfigManager.h"
 #include "FlashEnvelope.h"
 #include "MatsuokaEngine.h"
+#include "MixerSnapshot.h"
 #include "NetworkState.h"
 
 /*
@@ -92,6 +93,23 @@ public:
   void setNodeQuantiseAmount(int nodeId, float amount);
   float getNodeQuantiseAmount(int nodeId) const;
 
+  // Per-node mixer / MIDI state (Phase 6). volume scales velocity; midiNote
+  // overrides the routing-derived note; muted gates output. Solo is
+  // UI-transient (never serialized) and recombines into `enabled`.
+  void setNodeVolume(int nodeId, float volume);
+  float getNodeVolume(int nodeId) const;
+  void setNodeMidiNote(int nodeId, int note);
+  int getNodeMidiNote(int nodeId) const;
+  void setNodeMuted(int nodeId, bool muted);
+  bool getNodeMuted(int nodeId) const;
+  void setNodeSoloed(int nodeId, bool soloed);
+  bool getNodeSoloed(int nodeId) const;
+  void clearSolo();
+
+  // Lock-free message->audio mirror of the per-node MIDI state.
+  MixerSnapshot& getMixerSnapshot() { return _mixerSnapshot; }
+  const MixerSnapshot& getMixerSnapshot() const { return _mixerSnapshot; }
+
   // Connection menu getters
   double getConnectionWeight(int from, int to) const;
   double getConnectionPhase(int from, int to) const;
@@ -171,11 +189,15 @@ private:
   std::vector<juce::Point<float>> _clickOffsets;
   bool _draggingAll = false;
 
+  MixerSnapshot _mixerSnapshot;
+  std::set<int> _soloedNodes;
+
   int nextFreeNodeId() const;
   juce::Point<float> nodePosition(int nodeId) const;
   void setNodePosition(int nodeId, juce::Point<float> pos);
   void recomputeConnectionWeight(int from, int to);
   void setNodeParameterDefaults(juce::ValueTree node);
+  void publishMixerSnapshot();
 
   juce::Point<float> positionNewNode(int parentId);
   juce::Point<float> positionFirstNewNode(int parentId);
