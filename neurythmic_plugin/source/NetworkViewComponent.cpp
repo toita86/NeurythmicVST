@@ -102,7 +102,13 @@ void NetworkViewComponent::drawConnections(juce::Graphics& g,
                   cfg.connColour, GraphGeometry::getColourScale(weight, cfg));
     if (!selected && dotted)
       colour = scaleRGB(colour, cfg.inactiveBrightnessMult);
-    const float thickness = GraphGeometry::getLineWidth(weight, cfg);
+    const bool hovered =
+        conn.sourceId == _hoveredConnFrom && conn.targetId == _hoveredConnTo;
+    if (!selected && hovered)
+      colour = colour.brighter(0.6f);
+    float thickness = GraphGeometry::getLineWidth(weight, cfg);
+    if (hovered)
+      thickness += 2.0f;
 
     juce::Path path;
     if (conn.isParentEdge) {
@@ -161,7 +167,16 @@ void NetworkViewComponent::drawNodes(juce::Graphics& g,
       g.drawEllipse(p.getX() - haloRadius, p.getY() - haloRadius,
                     haloRadius * 2.0f, haloRadius * 2.0f, thickness);
     }
-    const float radius = cfg.nodeRadius * scaling;
+    const float radius = GraphGeometry::getNodeRadius(intensity, cfg) * scaling;
+
+    // Hover glow: a soft expanding outline before selection.
+    if (id == _hoveredNode) {
+      const float glowRadius = radius + 6.0f;
+      g.setColour(colour.withMultipliedAlpha(0.35f));
+      g.drawEllipse(p.getX() - glowRadius, p.getY() - glowRadius,
+                    glowRadius * 2.0f, glowRadius * 2.0f, thickness + 3.0f);
+      g.setColour(colour);
+    }
     g.drawEllipse(p.getX() - radius, p.getY() - radius, radius * 2.0f,
                   radius * 2.0f, thickness);
   }
@@ -337,6 +352,40 @@ void NetworkViewComponent::mouseDrag(const juce::MouseEvent& e) {
 
 void NetworkViewComponent::mouseUp(const juce::MouseEvent&) {
   _controller.endMoveAllNodes();
+}
+
+void NetworkViewComponent::mouseMove(const juce::MouseEvent& e) {
+  const float minDim = static_cast<float>(std::min(getWidth(), getHeight()));
+  const int nodeId =
+      _controller.isNodeAtPoint(toNormalised(e.position, minDim));
+  const auto conn = _controller.connectionAtPoint(e.position, minDim);
+
+  const int newConnFrom = nodeId >= 0 ? -1 : conn.first;
+  const int newConnTo = nodeId >= 0 ? -1 : conn.second;
+  if (nodeId != _hoveredNode || newConnFrom != _hoveredConnFrom ||
+      newConnTo != _hoveredConnTo) {
+    _hoveredNode = nodeId;
+    _hoveredConnFrom = newConnFrom;
+    _hoveredConnTo = newConnTo;
+    repaint();
+  }
+
+  if (newConnFrom >= 0)
+    setTooltip("Weight: " +
+               juce::String(
+                   _controller.getConnectionWeight(newConnFrom, newConnTo), 3));
+  else
+    setTooltip({});
+}
+
+void NetworkViewComponent::mouseExit(const juce::MouseEvent&) {
+  if (_hoveredNode >= 0 || _hoveredConnFrom >= 0) {
+    _hoveredNode = -1;
+    _hoveredConnFrom = -1;
+    _hoveredConnTo = -1;
+    setTooltip({});
+    repaint();
+  }
 }
 
 }  // namespace neurythmic

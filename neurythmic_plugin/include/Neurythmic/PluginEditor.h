@@ -25,5 +25,6 @@ private:
   PresetManager _presets;
   MainMenu _mainMenu;
   IconButton _showMenuButton{IconButton::Icon::Hamburger};
+  juce::TooltipWindow _tooltipWindow{this, 600};
 };
 }  // namespace neurythmic

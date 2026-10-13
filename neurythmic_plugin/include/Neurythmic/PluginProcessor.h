@@ -10,7 +10,8 @@
 
 namespace neurythmic {
 
-class PluginProcessor : public juce::AudioProcessor {
+class PluginProcessor : public juce::AudioProcessor,
+                        private juce::AudioProcessorValueTreeState::Listener {
 public:
   PluginProcessor();
   ~PluginProcessor() override;
@@ -48,10 +49,18 @@ public:
   void setTempoSource(TempoSource* source);  // test seam
   bool isPlaying() const;                    // last known transport state
 
+  // Phase 7 API
+  // Builds the APVTS parameter id for a node field, e.g. ("volume", 0) ->
+  // "node_00_volume". Zero-padded so the DAW list sorts naturally.
+  static juce::String nodeParamId(int nodeId, const char* field);
+  // Applies the host time signature to every "follow host" node. Message
+  // thread (called from the editor timer); safe to call headlessly.
+  void applyHostGrid();
+
   // Getters exposed for the editor
   double getNodeFrequency(unsigned id) const;
-  double getRootFreq() const;  // rootFreq APVTS parameter (Hz)
-  double getBpm() const;       // host tempo when playing, else rootFreq * 60
+  double getRootFreq() const;  // effective root freq used by the engine (Hz)
+  double getBpm() const;       // effective tempo shown in the mixer (BPM)
   NetworkController& getController() { return _controller; }
   const MatsuokaEngine& getEngine() const { return _engine; }
 
@@ -61,6 +70,12 @@ private:
   static juce::AudioProcessorValueTreeState::ParameterLayout
   createParameterLayout();
   void process(juce::MidiBuffer& midiMessages, int numSamples);
+
+  // Phase 7 APVTS automation facade (message thread only).
+  void parameterChanged(const juce::String& parameterID,
+                        float newValue) override;
+  void syncAllNodeParams();
+  void syncNodeParams(int nodeId);
 
   MatsuokaEngine _engine;
   NetworkController _controller;  // MUST be declared after engine
@@ -72,6 +87,18 @@ private:
   TempoInfo _lastTempo;
   int _currentSample = 0;
   std::atomic<bool> _midiResetRequested{false};
+
+  // Phase 7 bridge / transport state.
+  bool _syncingParams = false;
+  bool _wasPlaying = false;
+  bool _hasLastPpq = false;
+  double _lastPpq = 0.0;
+  std::atomic<int> _hostTimeSigNumerator{4};
+  std::atomic<int> _hostTimeSigDenominator{4};
+
+  // Lock-free display values for the UI (written on the audio thread).
+  std::atomic<double> _displayBpm{120.0};
+  std::atomic<double> _displayRootFreq{2.0};
 };
 
 }  // namespace neurythmic

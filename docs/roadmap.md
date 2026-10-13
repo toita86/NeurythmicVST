@@ -566,57 +566,92 @@ Velocity:[====●==] 0.60                 ← Slider (shared per-node volume)
 
 ### 7.1 Host Transport & Tempo
 
-- BPM changes while playing → update `QuantiseGrid::setTempo()` immediately (no glitch)
-- Transport stop → engine pause, `juce::MidiBuffer::addEvent(NoteOff)` for all active notes
-- Transport start → engine resume, quantised grid re-syncs phase to downbeat
-- Loop region → detect loop jump via `ppqPosition` discontinuity, reset engine if needed
-- Time signature changes → update grid divisions (24 for 3/4, 32 for 4/4)
+- `TempoInfo` (the `TempoSource` snapshot) is extended with `ppqPosition`/`hasPpq`
+  and `timeSigNumerator`/`timeSigDenominator`; `PlayheadTempoSource::read()`
+  populates them from `juce::AudioPlayHead::PositionInfo`.
+- BPM changes while playing → node-0 frequency `bpm/60` (the engine auto-derives
+  the quantiser tempo from node 0; no extra `setTempo` call needed).
+- Loop / seek → detect a `ppqPosition` discontinuity against the expected
+  per-block delta; on a backward or oversized jump call `engine.reset()` and
+  emit NoteOff for all held notes.
+- Transport stop → emit NoteOff for all active notes (engine is not stepped, so
+  no new notes are produced). Transport start → **resume without reset** (the
+  engine keeps its phase; the user opted against a downbeat re-sync).
+- Time signature → maps the CPGLib grid by **denominator** (`x/4` → `_32nd`,
+  `x/8` → `_24th`). It drives a per-node **"follow host"** grid default; an
+  explicit NodeMenu grid choice overrides it for that node.
 
 ### 7.2 Expand DAW Automation Parameters
 
-Add per-node automatable parameters to `AudioProcessorValueTreeState`:
-- `node_{id}_freq` — per-node frequency
-- `node_{id}_volume` — per-node MIDI velocity
-- `node_{id}_pitch` — MIDI note number
-- `node_{id}_mute` — mute state (bool)
-- `node_{id}_quantAmount` — per-node quantise strength
+**Architecture decision:** the `juce::ValueTree` stays the canonical data model
+(presets and the `MixerSnapshot` pipeline are unchanged); the APVTS is a
+**mediated automation facade**, not a second source of truth.
 
-Parameter naming convention: prefix with `node_N_` for clean sorting in DAW parameter list.
+- Parameters are a **fixed upfront pool**: for each of the 16 node slots, five
+  parameters are created in `createParameterLayout()` — one per node id:
+  - `node_NN_freq` — per-node frequency multiple (child nodes only; node 0 is
+    governed by the global `rootFreq` parameter and host tempo)
+  - `node_NN_volume` — per-node MIDI velocity / mixer gain (0–1.5)
+  - `node_NN_pitch` — MIDI note number (0–127)
+  - `node_NN_mute` — mute state (bool)
+  - `node_NN_quantAmount` — per-node quantise strength (0–1)
+- IDs are zero-padded (`node_01_…` … `node_16_…`) so they sort cleanly in the
+  DAW parameter list. `NN` is the node id + 1 so displayed labels read "Node 1".
+- The 16-slot pool is a deliberate choice: JUCE exposes
+  `AudioProcessor::addParameter` but **not** `removeParameter`, so a truly
+  dynamic add/remove pool is impossible; a fixed pool keeps the parameter list
+  stable across the session. Unused slots remain present (inert).
+- **Bridge (message thread only):**
+  - Outbound (UI/menu/preset → APVTS): `NetworkController` writes the tree and
+    then raises a `onNodeParamsChanged(id)` callback; `PluginProcessor` copies
+    the node's values into the APVTS params.
+  - Inbound (host automation → tree): `PluginProcessor` implements
+    `AudioProcessorValueTreeState::Listener`; `parameterChanged()` parses the id
+    and calls the matching controller setter.
+  - A `_syncingParams` guard suppresses the callback that would otherwise loop.
+  - The controller stays APVTS-free (callbacks default to no-ops) so the
+    existing tests and construction sites are untouched; APVTS listener
+    callbacks arrive on the message thread (APVTS flushes host automation to its
+    tree on a timer), so no `ValueTree` access happens on the audio thread.
 
 ### 7.3 Window Resize Support
 
-- `PluginEditor::resized()` → recalculate NetworkView bounds
-- Graph scales to fit available area (maintains aspect ratio via `windowMinDim`)
-- Widget positions recalculated proportionally
-- Minimum window size: 600×400 (same as current)
+**Deferred.** The editor is already resizable (`PluginEditor` sets resize limits
+and the view scales by `min(width, height)`); no changes are made in this phase.
 
 ### 7.4 Visual Polish
 
-- Single software `juce::Graphics` paint pass — no flicker (no GL/FBO needed)
-- Node hover: subtle glow/outline on mouse hover before click
-- Connection hover: highlight path, show weight tooltip
-- Smooth state transitions: interpolate node position on drag
-- Node flash: inherited from `FlashEnvelope` — smooth attack/decay curve
-- Background: dark grey-blue (#19191E) matching matsuoka_frontend
+- Single software `juce::Graphics` paint pass — no flicker (already the case).
+- **Node fire growth:** when a node fires, the coloured circle grows — both the
+  outer radius (new `GraphGeometry::getNodeRadius(intensity, cfg)`) and the ring
+  thickness (`getNodeSpread`) scale with the flash envelope. Radius growth is
+  config-driven via `nodeFlashRadiusGrow` in `settings.xml`.
+- Node hover: subtle glow/outline while the pointer is over a node.
+- Connection hover: highlight the hovered connection and show a weight tooltip
+  (via `SettableTooltipClient` + a `TooltipWindow` owned by the editor).
+- Background: dark grey-blue (#19191E) matching matsuoka_frontend (already the
+  case).
 
 ### 7.5 Testing & QA
 
-**Unit Tests:**
-- MIDI output correctness: verify NoteOn/Off timing and velocity against quantised grid
-- Engine state sync: verify ValueTree ↔ Engine round-trip consistency
-- Tempo sync accuracy: measure event jitter at various BPM values
-- Preset save/load: verify byte-identical network after round-trip
+**Unit / integration tests (headless, `ctest`):**
+- `TempoTest`: `mapTimeSignatureToGrid` mapping; ppq discontinuity triggers a
+  reset + all-notes-off; transport stop clears held notes; transport start
+  resumes without reset; BPM change updates node-0 frequency.
+- `AutomationTest`: the fixed pool exists; host → controller (`setValue` on a
+  node param updates controller state); controller → host (a mutator updates the
+  APVTS value); the guard prevents feedback loops; preset round-trip preserves
+  node params; a deleted node's slot resets.
+- `GraphGeometryTest`: `getNodeRadius` grows monotonically with intensity.
 
-**Integration Tests:**
-- Create network → set params → save preset → reload → verify identical
-- Rapid tempo changes during playback → verify no hung notes, no crash
-- 16-node maximum network → verify performance within DAW callback budget
-- Plugin reload in DAW project → verify state restoration
-
-**Manual QA:**
-- Test in Reaper, Ableton Live, Logic Pro (AU), FL Studio
-- Stress test: max nodes, rapid interaction, tempo automation
-- Check for memory leaks (JUCE leak detector in debug builds)
+**Manual QA (checklist, performed in a DAW — not automated here):**
+- Load in Reaper / Ableton Live / Logic Pro (AU) / FL Studio.
+- Transport start/stop, loop-region playback, tempo automation, time-signature
+  changes → no hung notes, no crash.
+- Automate a node parameter from the host → verify the UI follows.
+- Save/reload the project → verify the network and node parameters restore.
+- 16-node network → watch the audio callback for dropouts.
+- Debug build → confirm the JUCE leak detector reports nothing.
 
 ---
 

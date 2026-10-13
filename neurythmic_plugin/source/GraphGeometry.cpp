@@ -159,6 +159,11 @@ float getNodeSpread(float intensity, const ConfigManager& cfg) {
          cfg.nodeLineThickness;
 }
 
+float getNodeRadius(float intensity, const ConfigManager& cfg) {
+  const float clamped = std::clamp(intensity, 0.0f, 1.0f);
+  return cfg.nodeRadius * (1.0f + cfg.nodeFlashRadiusGrow * clamped);
+}
+
 float getColourScale(float width, const ConfigManager& cfg) {
   const float widthCutoff = cfg.connectionColourStartsAtLevel *
                                 (cfg.maxLineThickness - cfg.minLineThickness) +

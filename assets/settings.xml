@@ -148,6 +148,7 @@
         <nodeLineThickness>2.4</nodeLineThickness>
         <nodeFlashSpread>40</nodeFlashSpread>
         <nodeFlashExponent>8</nodeFlashExponent>
+        <nodeFlashRadiusGrow>0.6</nodeFlashRadiusGrow>
 
 
         <nodeInfoTriWidth>3</nodeInfoTriWidth>

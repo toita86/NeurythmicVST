@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <map>
 #include <set>
 #include <utility>
@@ -93,6 +94,13 @@ public:
   void setNodeQuantiseAmount(int nodeId, float amount);
   float getNodeQuantiseAmount(int nodeId) const;
 
+  // Phase 7: a node's grid follows the host time signature by default; choosing
+  // an explicit grid (setNodeQuantiseGrid) opts out for that node.
+  bool getNodeQuantiseGridFollowHost(int nodeId) const;
+  void setNodeQuantiseGridFollowHost(int nodeId, bool follow);
+  // Applies a host-derived grid to every "follow host" node (message thread).
+  void applyHostGrid(MatsuokaEngine::gridType grid);
+
   // Per-node mixer / MIDI state (Phase 6). volume scales velocity; midiNote
   // overrides the routing-derived note; muted gates output. Solo is
   // UI-transient (never serialized) and recombines into `enabled`.
@@ -109,6 +117,11 @@ public:
   // Lock-free message->audio mirror of the per-node MIDI state.
   MixerSnapshot& getMixerSnapshot() { return _mixerSnapshot; }
   const MixerSnapshot& getMixerSnapshot() const { return _mixerSnapshot; }
+
+  // Phase 7: notified on the message thread after any node parameter change so
+  // the processor can mirror values into the APVTS automation facade. No-op
+  // unless set, so headless controller tests are unaffected.
+  void setOnNetworkChanged(std::function<void()> callback);
 
   // Connection menu getters
   double getConnectionWeight(int from, int to) const;
@@ -191,6 +204,11 @@ private:
 
   MixerSnapshot _mixerSnapshot;
   std::set<int> _soloedNodes;
+  std::function<void()> _onNetworkChanged;
+
+  // Last host-derived grid, applied immediately when a node opts in.
+  MatsuokaEngine::gridType _lastHostGrid = MatsuokaEngine::gridType::_32nd;
+  bool _lastHostGridValid = false;
 
   int nextFreeNodeId() const;
   juce::Point<float> nodePosition(int nodeId) const;
@@ -198,6 +216,7 @@ private:
   void recomputeConnectionWeight(int from, int to);
   void setNodeParameterDefaults(juce::ValueTree node);
   void publishMixerSnapshot();
+  void notifyNetworkChanged();
 
   juce::Point<float> positionNewNode(int parentId);
   juce::Point<float> positionFirstNewNode(int parentId);

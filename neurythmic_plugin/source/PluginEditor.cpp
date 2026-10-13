@@ -52,6 +52,7 @@ void PluginEditor::timerCallback() {
   // Always refresh the view so it renders (and re-renders) regardless of
   // transport state. The view rebuilds its scene and triggers a repaint.
   _networkView.update();
+  _processor.applyHostGrid();
   if (_mainMenu.isVisible())
     _mainMenu.refresh();
 }
