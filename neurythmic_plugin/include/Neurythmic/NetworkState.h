@@ -60,6 +60,8 @@ inline const juce::Identifier quantGrid{"quantGrid"};
 inline const juce::Identifier quantMultiple{"quantMultiple"};
 inline const juce::Identifier quantOffset{"quantOffset"};
 inline const juce::Identifier quantAmount{"quantAmount"};
+// Phase 7: whether the node's quantise grid follows the host time signature.
+inline const juce::Identifier gridFollowHost{"gridFollowHost"};
 // Phase 6 per-node mixer / MIDI output properties
 inline const juce::Identifier volume{"volume"};
 inline const juce::Identifier midiNote{"midiNote"};

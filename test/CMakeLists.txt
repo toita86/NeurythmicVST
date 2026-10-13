@@ -24,6 +24,8 @@ add_executable(NeurythmicTests
   source/InteractionTest.cpp
   source/MenuTest.cpp
   source/MixerTest.cpp
+  source/TempoTest.cpp
+  source/AutomationTest.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginProcessor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginEditor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/ConfigManager.cpp

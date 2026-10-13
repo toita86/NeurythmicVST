@@ -107,6 +107,7 @@ public:
   const float& nodeLineThickness;
   const float& nodeFlashSpread;
   const float& nodeFlashExponent;
+  const float& nodeFlashRadiusGrow;
   const float& minLineWeight;
   const float& maxLineWeight;
   const float& connBrightnessParentChild;
@@ -203,6 +204,7 @@ private:
   float _nodeLineThickness = 2.4f;
   float _nodeFlashSpread = 40.0f;
   float _nodeFlashExponent = 8.0f;
+  float _nodeFlashRadiusGrow = 0.6f;
   float _minLineWeight = 0.1f;
   float _maxLineWeight = 7.0f;
   float _connBrightnessParentChild = 1.0f;

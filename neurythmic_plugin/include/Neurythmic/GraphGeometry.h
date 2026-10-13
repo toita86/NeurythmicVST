@@ -69,6 +69,10 @@ float getLineWidth(float intensity, const ConfigManager& cfg);
 // Legacy `getNodeSpread`: node intensity -> node line thickness.
 float getNodeSpread(float intensity, const ConfigManager& cfg);
 
+// Phase 7 node-fire growth: the outer radius of a node's coloured circle grows
+// with intensity, `nodeRadius * (1 + nodeFlashRadiusGrow * intensity)`.
+float getNodeRadius(float intensity, const ConfigManager& cfg);
+
 // Legacy `getColourScale`: connection weight -> colour lerp factor (0..1).
 float getColourScale(float width, const ConfigManager& cfg);
 

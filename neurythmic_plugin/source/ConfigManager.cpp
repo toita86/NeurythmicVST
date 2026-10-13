@@ -117,6 +117,7 @@ ConfigManager::ConfigManager()
       nodeLineThickness(_nodeLineThickness),
       nodeFlashSpread(_nodeFlashSpread),
       nodeFlashExponent(_nodeFlashExponent),
+      nodeFlashRadiusGrow(_nodeFlashRadiusGrow),
       minLineWeight(_minLineWeight),
       maxLineWeight(_maxLineWeight),
       connBrightnessParentChild(_connBrightnessParentChild),
@@ -258,6 +259,8 @@ ConfigManager::ConfigManager()
     _nodeFlashSpread = getFloat(layout, "nodeFlashSpread", _nodeFlashSpread);
     _nodeFlashExponent =
         getFloat(layout, "nodeFlashExponent", _nodeFlashExponent);
+    _nodeFlashRadiusGrow =
+        getFloat(layout, "nodeFlashRadiusGrow", _nodeFlashRadiusGrow);
     _minLineWeight = getFloat(layout, "minLineWeight", _minLineWeight);
     _maxLineWeight = getFloat(layout, "maxLineWeight", _maxLineWeight);
     _connBrightnessParentChild = getFloat(layout, "ConnBrightnessParentChild",

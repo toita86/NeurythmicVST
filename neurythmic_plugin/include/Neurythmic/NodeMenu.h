@@ -48,6 +48,7 @@ private:
 
   NetworkController& _controller;
   int _nodeId;
+  bool _isRoot = false;
   int _tab = 0;
   bool _updatingKeyboard = false;
 
@@ -57,6 +58,7 @@ private:
   juce::TextButton _tabMidi{"MIDI"};
 
   // Node tab
+  juce::Label _rootHint;
   RadioButtonMatrix _freqMatrix;
   juce::Label _fineTuneLabel{"", "Fine Tune"};
   juce::Slider _fineTune;
@@ -73,6 +75,7 @@ private:
   juce::Label _freedomLabel{"", "Freedom"};
   juce::Slider _freedom;
   juce::Label _gridLabel{"", "Grid"};
+  juce::TextButton _gridHost{"Follow Host"};
   RadioButtonMatrix _gridMatrix;
   juce::Label _resolutionLabel{"", "Resolution"};
   RadioButtonMatrix _resolutionMatrix;

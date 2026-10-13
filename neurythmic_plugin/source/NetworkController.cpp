@@ -375,6 +375,7 @@ void NetworkController::setNodeFrequency(int nodeId,
   node.setProperty(NetworkState::Props::freq, freq, nullptr);
   _engine.setNodeFrequency(static_cast<unsigned>(nodeId), freq, inherit);
   _engine.doQueuedActions();
+  notifyNetworkChanged();
 }
 
 void NetworkController::setNodeSelfNoise(int nodeId, double amount) {
@@ -436,6 +437,8 @@ void NetworkController::setNodeQuantiseGrid(int nodeId,
     return;
   node.setProperty(NetworkState::Props::quantGrid, static_cast<int>(grid),
                    nullptr);
+  // An explicit grid choice opts the node out of following the host.
+  node.setProperty(NetworkState::Props::gridFollowHost, false, nullptr);
   _engine.setNodeQuantiser_Grid(static_cast<unsigned>(nodeId), grid);
   _engine.doQueuedActions();
 }
@@ -447,6 +450,55 @@ MatsuokaEngine::gridType NetworkController::getNodeQuantiseGrid(
     return MatsuokaEngine::gridType::unQuantised;
   return static_cast<MatsuokaEngine::gridType>(
       static_cast<int>(node.getProperty(NetworkState::Props::quantGrid)));
+}
+
+bool NetworkController::getNodeQuantiseGridFollowHost(int nodeId) const {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return false;
+  return static_cast<bool>(
+      node.getProperty(NetworkState::Props::gridFollowHost, true));
+}
+
+void NetworkController::setNodeQuantiseGridFollowHost(int nodeId, bool follow) {
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return;
+  node.setProperty(NetworkState::Props::gridFollowHost, follow, nullptr);
+
+  // Apply the current host grid straight away so the toggle has a visible
+  // effect instead of waiting for the next time-signature change.
+  if (follow && _lastHostGridValid && nodeId != NetworkState::kRootNodeId) {
+    node.setProperty(NetworkState::Props::quantGrid,
+                     static_cast<int>(_lastHostGrid), nullptr);
+    _engine.setNodeQuantiser_Grid(static_cast<unsigned>(nodeId), _lastHostGrid);
+    _engine.doQueuedActions();
+  }
+}
+
+void NetworkController::applyHostGrid(MatsuokaEngine::gridType grid) {
+  _lastHostGrid = grid;
+  _lastHostGridValid = true;
+
+  bool changed = false;
+  NetworkState::forEachNode(_network, [&](juce::ValueTree n) {
+    const int id = static_cast<int>(n.getProperty(NetworkState::Props::id));
+    // The root drives the tempo and must stay free-running (the engine rejects
+    // a grid for node 0), so host grid applies to child nodes only.
+    if (id == NetworkState::kRootNodeId)
+      return;
+    if (!getNodeQuantiseGridFollowHost(id))
+      return;
+    if (static_cast<MatsuokaEngine::gridType>(static_cast<int>(
+            n.getProperty(NetworkState::Props::quantGrid))) == grid)
+      return;
+    n.setProperty(NetworkState::Props::quantGrid, static_cast<int>(grid),
+                  nullptr);
+    _engine.setNodeQuantiser_Grid(static_cast<unsigned>(id), grid);
+    changed = true;
+  });
+  if (changed)
+    _engine.doQueuedActions();
 }
 
 void NetworkController::setNodeQuantiseMultiple(int nodeId, float mult) {
@@ -489,6 +541,7 @@ void NetworkController::setNodeQuantiseAmount(int nodeId, float amount) {
   node.setProperty(NetworkState::Props::quantAmount, amount, nullptr);
   _engine.setQuantiseAmount(static_cast<unsigned>(nodeId), amount);
   _engine.doQueuedActions();
+  notifyNetworkChanged();
 }
 
 float NetworkController::getNodeQuantiseAmount(int nodeId) const {
@@ -847,6 +900,7 @@ void NetworkController::setNodeParameterDefaults(juce::ValueTree node) {
   node.setProperty(NetworkState::Props::quantMultiple, 1.0, nullptr);
   node.setProperty(NetworkState::Props::quantOffset, 0.0, nullptr);
   node.setProperty(NetworkState::Props::quantAmount, 1.0, nullptr);
+  node.setProperty(NetworkState::Props::gridFollowHost, true, nullptr);
 
   const int id = static_cast<int>(node.getProperty(NetworkState::Props::id));
   node.setProperty(NetworkState::Props::volume,
@@ -875,6 +929,17 @@ void NetworkController::publishMixerSnapshot() {
         id, static_cast<float>(n.getProperty(NetworkState::Props::volume)));
     _mixerSnapshot.setEnabled(id, enabled);
   });
+
+  notifyNetworkChanged();
+}
+
+void NetworkController::setOnNetworkChanged(std::function<void()> callback) {
+  _onNetworkChanged = std::move(callback);
+}
+
+void NetworkController::notifyNetworkChanged() {
+  if (_onNetworkChanged)
+    _onNetworkChanged();
 }
 
 juce::Point<float> NetworkController::positionNewNode(int parentId) {

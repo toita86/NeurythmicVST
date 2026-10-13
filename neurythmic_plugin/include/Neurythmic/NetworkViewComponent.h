@@ -10,7 +10,8 @@ namespace neurythmic {
 // Software renderer for the network graph. Draws nodes, parent-child straight
 // edges, curved input edges, arrowheads and node labels using juce::Graphics,
 // reusing the GraphGeometry helpers for the geometry and visual mapping.
-class NetworkViewComponent : public juce::Component {
+class NetworkViewComponent : public juce::Component,
+                             public juce::SettableTooltipClient {
 public:
   explicit NetworkViewComponent(NetworkController& controller);
 
@@ -22,6 +23,8 @@ public:
   void mouseDown(const juce::MouseEvent& e) override;
   void mouseDrag(const juce::MouseEvent& e) override;
   void mouseUp(const juce::MouseEvent& e) override;
+  void mouseMove(const juce::MouseEvent& e) override;
+  void mouseExit(const juce::MouseEvent& e) override;
 
 private:
   void drawConnections(juce::Graphics& g,
@@ -44,6 +47,9 @@ private:
 
   NetworkController& _controller;
   juce::Font _font{juce::FontOptions{}};
+  int _hoveredNode = -1;
+  int _hoveredConnFrom = -1;
+  int _hoveredConnTo = -1;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NetworkViewComponent)
 };

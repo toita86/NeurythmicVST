@@ -35,7 +35,18 @@ NodeMenu::NodeMenu(NetworkController& controller, int nodeId)
                 juce::MidiKeyboardComponent::horizontalKeyboard),
       _octaveMatrix(buildOctaveLabels(), 7) {
   setSize(kWidth, 400);
+  _isRoot = (_nodeId == NetworkState::kRootNodeId);
 
+  _rootHint.setText(
+      "Root node: frequency, sync and quantisation follow the DAW "
+      "transport.",
+      juce::dontSendNotification);
+  _rootHint.setFont(juce::Font(juce::FontOptions().withHeight(16.0f)));
+  _rootHint.setColour(juce::Label::textColourId,
+                      MenuTheme::labelColour.withAlpha(0.7f));
+  _rootHint.setJustificationType(juce::Justification::topLeft);
+
+  addAndMakeVisible(_rootHint);
   addAndMakeVisible(_tabNode);
   addAndMakeVisible(_tabConstraint);
   addAndMakeVisible(_tabMidi);
@@ -53,6 +64,7 @@ NodeMenu::NodeMenu(NetworkController& controller, int nodeId)
   addAndMakeVisible(_freedomLabel);
   addAndMakeVisible(_freedom);
   addAndMakeVisible(_gridLabel);
+  addAndMakeVisible(_gridHost);
   addAndMakeVisible(_gridMatrix);
   addAndMakeVisible(_resolutionLabel);
   addAndMakeVisible(_resolutionMatrix);
@@ -128,6 +140,13 @@ NodeMenu::NodeMenu(NetworkController& controller, int nodeId)
     refreshConstraint();
   });
 
+  _gridHost.setClickingTogglesState(true);
+  _gridHost.onClick = [this] {
+    _controller.setNodeQuantiseGridFollowHost(_nodeId,
+                                              _gridHost.getToggleState());
+    refreshConstraint();
+  };
+
   _resolutionMatrix.setListener([this](int idx) {
     const auto multiples = MenuValues::resolutionMultiples();
     _controller.setNodeQuantiseMultiple(_nodeId, multiples[idx]);
@@ -191,25 +210,33 @@ void NodeMenu::setTab(int tab) {
   const bool showConstraint = tab == 1;
   const bool showMidi = tab == 2;
 
-  _freqMatrix.setVisible(showNode);
-  _fineTuneLabel.setVisible(showNode);
-  _fineTune.setVisible(showNode);
+  // The root node's frequency, sync mode and quantisation are driven by the
+  // host transport, so those controls are hidden for it to avoid confusion.
+  const bool showNodeAll = showNode && !_isRoot;
+  const bool showConstraintAll = showConstraint && !_isRoot;
+
+  _rootHint.setVisible(_isRoot && (showNode || showConstraint));
+
+  _freqMatrix.setVisible(showNodeAll);
+  _fineTuneLabel.setVisible(showNodeAll);
+  _fineTune.setVisible(showNodeAll);
   _selfNoiseLabel.setVisible(showNode);
   _selfNoise.setVisible(showNode);
   _phaseLabel.setVisible(showNode);
   _phase.setVisible(showNode);
-  _syncLabel.setVisible(showNode);
-  _syncMatrix.setVisible(showNode);
+  _syncLabel.setVisible(showNodeAll);
+  _syncMatrix.setVisible(showNodeAll);
   _addChild.setVisible(showNode);
   _deleteNode.setVisible(showNode);
 
-  _freedomLabel.setVisible(showConstraint);
-  _freedom.setVisible(showConstraint);
-  _gridLabel.setVisible(showConstraint);
-  _gridMatrix.setVisible(showConstraint);
-  _resolutionLabel.setVisible(showConstraint);
-  _resolutionMatrix.setVisible(showConstraint);
-  _constraintView.setVisible(showConstraint);
+  _freedomLabel.setVisible(showConstraintAll);
+  _freedom.setVisible(showConstraintAll);
+  _gridLabel.setVisible(showConstraintAll);
+  _gridHost.setVisible(showConstraintAll);
+  _gridMatrix.setVisible(showConstraintAll);
+  _resolutionLabel.setVisible(showConstraintAll);
+  _resolutionMatrix.setVisible(showConstraintAll);
+  _constraintView.setVisible(showConstraintAll);
 
   _keyboard.setVisible(showMidi);
   _octaveLabel.setVisible(showMidi);
@@ -238,7 +265,10 @@ void NodeMenu::refreshFrequency() {
 
 void NodeMenu::refreshConstraint() {
   const auto grid = _controller.getNodeQuantiseGrid(_nodeId);
+  const bool followHost = _controller.getNodeQuantiseGridFollowHost(_nodeId);
   _gridMatrix.setSelected(MenuValues::gridToIndex(grid));
+  _gridHost.setToggleState(followHost, juce::dontSendNotification);
+  _gridMatrix.setEnabled(!followHost);
 
   auto labels = MenuValues::resolutionLabels(grid);
   if (labels.empty())
@@ -324,15 +354,20 @@ void NodeMenu::layoutNodeTab() {
   auto area = getLocalBounds().reduced(6);
   area.removeFromTop(26 + 6);
 
-  _freqMatrix.setBounds(area.removeFromTop(52));
-  area.removeFromTop(6);
+  if (_isRoot) {
+    _rootHint.setBounds(area.removeFromTop(48));
+    area.removeFromTop(4);
+  } else {
+    _freqMatrix.setBounds(area.removeFromTop(52));
+    area.removeFromTop(6);
+
+    auto fineRow = area.removeFromTop(24);
+    _fineTuneLabel.setBounds(fineRow.removeFromLeft(60));
+    _fineTune.setBounds(fineRow);
+    area.removeFromTop(4);
+  }
 
   auto row = area.removeFromTop(24);
-  _fineTuneLabel.setBounds(row.removeFromLeft(60));
-  _fineTune.setBounds(row);
-  area.removeFromTop(4);
-
-  row = area.removeFromTop(24);
   _selfNoiseLabel.setBounds(row.removeFromLeft(60));
   _selfNoise.setBounds(row);
   area.removeFromTop(4);
@@ -342,11 +377,12 @@ void NodeMenu::layoutNodeTab() {
   _phase.setBounds(row);
   area.removeFromTop(4);
 
-  row = area.removeFromTop(24);
-  _syncLabel.setBounds(row.removeFromLeft(60));
-  area.removeFromTop(4);
-
-  _syncMatrix.setBounds(area.removeFromTop(26));
+  if (!_isRoot) {
+    row = area.removeFromTop(24);
+    _syncLabel.setBounds(row.removeFromLeft(60));
+    area.removeFromTop(4);
+    _syncMatrix.setBounds(area.removeFromTop(26));
+  }
   area.removeFromTop(8);
 
   auto btnRow = area.removeFromTop(28);
@@ -358,6 +394,11 @@ void NodeMenu::layoutConstraintTab() {
   auto area = getLocalBounds().reduced(6);
   area.removeFromTop(26 + 6);
 
+  if (_isRoot) {
+    _rootHint.setBounds(area.removeFromTop(48));
+    return;
+  }
+
   auto row = area.removeFromTop(24);
   _freedomLabel.setBounds(row.removeFromLeft(60));
   _freedom.setBounds(row);
@@ -365,6 +406,7 @@ void NodeMenu::layoutConstraintTab() {
 
   row = area.removeFromTop(24);
   _gridLabel.setBounds(row.removeFromLeft(60));
+  _gridHost.setBounds(row.reduced(0, 2));
   area.removeFromTop(4);
 
   _gridMatrix.setBounds(area.removeFromTop(26));

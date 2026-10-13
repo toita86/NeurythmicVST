@@ -142,6 +142,23 @@ TEST(GraphGeometry, GetNodeSpreadGrowsWithIntensity) {
             neurythmic::GraphGeometry::getNodeSpread(0.0f, cfg()));
 }
 
+// getNodeRadius --------------------------------------------------------------
+
+TEST(GraphGeometry, GetNodeRadiusAtZeroIsBaseRadius) {
+  EXPECT_NEAR(neurythmic::GraphGeometry::getNodeRadius(0.0f, cfg()),
+              cfg().nodeRadius, 1e-4f);
+}
+
+TEST(GraphGeometry, GetNodeRadiusGrowsWithIntensity) {
+  EXPECT_GT(neurythmic::GraphGeometry::getNodeRadius(1.0f, cfg()),
+            neurythmic::GraphGeometry::getNodeRadius(0.0f, cfg()));
+}
+
+TEST(GraphGeometry, GetNodeRadiusIsClampedToOne) {
+  EXPECT_NEAR(neurythmic::GraphGeometry::getNodeRadius(5.0f, cfg()),
+              neurythmic::GraphGeometry::getNodeRadius(1.0f, cfg()), 1e-4f);
+}
+
 // getColourScale -------------------------------------------------------------
 
 TEST(GraphGeometry, GetColourScaleBelowCutoffIsProportional) {
