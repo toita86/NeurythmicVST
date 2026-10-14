@@ -272,6 +272,10 @@ void NetworkController::rebuild(const juce::ValueTree& newRoot) {
   _engine.doQueuedActions();
 
   _network = newRoot.createCopy();  // controller owns a deep copy
+  // Pre-Phase-8 presets predate the schema version; treat them as version 1 so
+  // future migrations have a hook.
+  if (!_network.hasProperty(Props::stateVersion))
+    _network.setProperty(Props::stateVersion, kStateVersion, nullptr);
   _soloedNodes.clear();
   publishMixerSnapshot();
 }

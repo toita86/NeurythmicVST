@@ -655,6 +655,93 @@ and the view scales by `min(width, height)`); no changes are made in this phase.
 
 ---
 
+## Phase 8 — Cross-Platform Distribution
+
+**Goal:** Ship installable builds for macOS, Windows and Linux without needing a
+toolchain, under a clear versioning policy.
+
+A `.vst3` bundle is OS- and CPU-architecture-specific; the local `build/dev`
+(Linux `x86_64`, Debug) cannot run on another platform. Cheapest reliable route
+is free GitHub Actions runners building on `ubuntu-latest`, `windows-latest` and
+`macos-latest`, attaching the POST_BUILD `Neurythmic.zip` artefact to a GitHub
+Release.
+
+### 8.1 CI Release Workflow (`.github/workflows/release.yml`)
+
+- Trigger on `push` tags matching `v*` (and `workflow_dispatch`, which takes a
+  `version` input defaulting to `0.0.0`; a dispatched run builds but does not
+  create a Release).
+- Repository is `toita86/NeurythmicVST`; the release job needs
+  `permissions: contents: write` and uses the default `GITHUB_TOKEN`.
+- Matrix job per OS:
+  - **Linux:** `apt-get install -y libasound2-dev libfreetype6-dev libx11-dev
+    libxcomposite-dev libxcursor-dev libxinerama-dev libxrandr-dev
+    libxrender-dev libxext-dev libglu1-mesa-dev ninja-build`.
+  - **Windows:** `ilammy/msvc-dev-cmd@v1` (the `release` preset uses the Ninja
+    generator, which needs the MSVC environment).
+  - **macOS:** nothing extra — `CMakeLists.txt` already sets
+    `CMAKE_OSX_ARCHITECTURES "x86_64;arm64"` (universal binary).
+- Configure + build: `cmake --preset release && cmake --build --preset release`
+  (`Release`, LTO, tests off — the shippable build).
+- **Version injection:** the workflow passes
+  `-DNEURYTHMIC_VERSION=${GITHUB_REF_NAME#v}` at configure time so the bundle and
+  the git tag can never disagree (see §8.2).
+- **Artefact naming:** the POST_BUILD `Neurythmic.zip` is copied to a per-OS name
+  including the CPU architecture —
+  `Neurythmic-v<ver>-macOS-universal.zip`,
+  `Neurythmic-v<ver>-Windows-x86_64.zip`,
+  `Neurythmic-v<ver>-Linux-x86_64.zip` — and uploaded via
+  `actions/upload-artifact`.
+- On tag, create a GitHub Release (`softprops/action-gh-release`) attaching all
+  three zips.
+
+### 8.2 Versioning Policy
+
+**Decision:** the first release is **`0.1.0`** — a pre-1.0 MVP. Until 1.0.0 the
+project makes **no preset / automation compatibility guarantee**; parameter IDs
+and the state schema may change between minor versions.
+
+- **Single source of truth = the git tag.** `CMakeLists.txt` defines
+  `NEURYTHMIC_VERSION` with a cache default of `0.0.0`; the release workflow
+  overrides it from the pushed tag (`v0.1.0` → `0.1.0`). Local/dev builds keep
+  the `0.0.0` fallback.
+- Because a non-zero version lets AU hosts cache the component, **the version
+  must be bumped on every release** for hosts to notice an update. `0.0.0`
+  retains the development convenience that AU hosts always revalidate.
+- The version is exposed to the UI/tests as the `NEURYTHMIC_VERSION` compile
+  definition and shown as a small label in the CPG tab of the main menu.
+- **Identity codes are frozen:** `COMPANY_NAME "Toita86"`,
+  `PLUGIN_MANUFACTURER_CODE Toit`, `PLUGIN_CODE Ntpl`, product name
+  `Neurythmic`. Hosts key automation/preset/project recall on these; changing
+  them makes the host treat the build as a different plugin.
+- **State schema version:** the `<Network>` root carries a `stateVersion`
+  property (`kStateVersion = 1`), written by `initEmptyNetwork()` and preserved
+  across save/load. Trees without the property (pre-Phase-8 presets) load as
+  version 1, giving future migrations a hook.
+
+### 8.3 Packaging & Install Instructions
+
+- **VST3 manifest:** `VST3_AUTO_MANIFEST` is set to `TRUE` so JUCE generates a
+  correct `moduleinfo.json` (class, version, category), avoiding validator
+  warnings and keeping the version in one place.
+- `assets/README.txt` (bundled in each zip) documents the per-OS install paths
+  for macOS (`~/Library/Audio/Plug-Ins/VST3/`), Windows
+  (`%LOCALAPPDATA%/Programs/Common/VST3/`) and Linux (`~/.vst3/`).
+- `README.md` gains a "Download / Install" section pointing at
+  `https://github.com/toita86/NeurythmicVST/releases`, plus the runtime
+  dependency note.
+
+### 8.4 Notes / Known Trade-offs
+
+- **macOS Gatekeeper:** unsigned downloads are quarantined; colleagues may need
+  right-click → Open. Notarization is out of scope.
+- **Windows SmartScreen:** unsigned binaries may show a warning on first run.
+- **Linux runtime deps:** end users still need `libfreetype6` + `libasound2`
+  at load time (normally present on desktop distros) — noted in `README.md`.
+- **macOS deployment target** stays `10.11` (supported by JUCE 8.0.12).
+
+---
+
 ## Maybes (Deferred / Future Versions)
 
 | Feature | Priority | Notes |

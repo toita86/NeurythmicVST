@@ -74,15 +74,22 @@ endif()
 # Adds a plugin target.
 set(NEURYTHMIC_PLUGIN_NAME "Neurythmic")
 
+# Plugin version. In CI the release workflow overrides this from the pushed git
+# tag (e.g. v0.1.0 -> 0.1.0); local/dev builds keep the 0.0.0 fallback.
+# A non-zero version lets AU hosts cache the component, so it must be bumped on
+# every release; 0.0.0 intentionally keeps the dev convenience of always
+# revalidating.
+set(NEURYTHMIC_VERSION "0.0.0" CACHE STRING "Plugin version (major.minor.patch)")
+
 # sets the metadata of the plugin
 juce_add_plugin(
   NeurythmicPlugin
   PRODUCT_NAME
     ${NEURYTHMIC_PLUGIN_NAME}
   VERSION
-    # the vesrion is specified using semantic versioning
+    # the version is specified using semantic versioning
     # major.minor.patch
-    0.0.0 # 0 forces AU hosts to always refresh
+    ${NEURYTHMIC_VERSION}
   COMPANY_NAME
     "Toita86"
   PLUGIN_MANUFACTURER_CODE
@@ -104,7 +111,7 @@ juce_add_plugin(
   NEEDS_MIDI_OUTPUT
     TRUE
   VST3_AUTO_MANIFEST
-    FALSE
+    TRUE
   COPY_PLUGIN_AFTER_BUILD
     TRUE
 )
@@ -139,6 +146,7 @@ juce_add_module(neurythmic_plugin ALIAS_NAMESPACE neurythmic)
 target_compile_definitions(neurythmic_plugin
   INTERFACE
      NEURYTHMIC_PLUGIN_NAME="${NEURYTHMIC_PLUGIN_NAME}"
+     NEURYTHMIC_VERSION="${NEURYTHMIC_VERSION}"
 )
 
 # Enables strict C++ warnings.

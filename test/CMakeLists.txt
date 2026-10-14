@@ -26,6 +26,7 @@ add_executable(NeurythmicTests
   source/MixerTest.cpp
   source/TempoTest.cpp
   source/AutomationTest.cpp
+  source/VersionTest.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginProcessor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginEditor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/ConfigManager.cpp
@@ -64,6 +65,7 @@ target_link_libraries(NeurythmicTests
 
 target_compile_definitions(NeurythmicTests PRIVATE
   NEURYTHMIC_PLUGIN_NAME="Neurythmic"
+  NEURYTHMIC_VERSION="${NEURYTHMIC_VERSION}"
   JUCE_WEB_BROWSER=0
   JUCE_USE_CURL=0
   JUCE_VST3_CAN_REPLACE_VST2=0

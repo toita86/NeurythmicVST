@@ -46,6 +46,7 @@ private:
   juce::TextButton _newPreset{"NEW Preset"};
   juce::TextButton _savePreset{"Save Preset File"};
   juce::TextButton _loadPreset{"Load Preset File"};
+  juce::Label _version;
 
   // Mixer tab
   MixerPanel _mixer;

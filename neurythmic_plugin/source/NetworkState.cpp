@@ -6,6 +6,7 @@ namespace neurythmic::NetworkState {
 
 juce::ValueTree initEmptyNetwork() {
   juce::ValueTree network(IDs::NETWORK);
+  network.setProperty(Props::stateVersion, kStateVersion, nullptr);
   createNode(network, kRootNodeId, kNoParentId, 0.5f, 0.5f);
   return network;
 }

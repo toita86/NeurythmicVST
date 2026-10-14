@@ -47,6 +47,8 @@ inline const juce::Identifier CONNECTION{"Connection"};
 }  // namespace IDs
 
 namespace Props {
+// Network root properties
+inline const juce::Identifier stateVersion{"stateVersion"};
 // Node properties
 inline const juce::Identifier id{"id"};
 inline const juce::Identifier parentId{"parentId"};
@@ -76,6 +78,10 @@ inline const juce::Identifier scaleFactor{"scaleFactor"};
 constexpr int kRootNodeId = 0;
 constexpr int kNoParentId = -1;
 constexpr int kMaxNodes = 16;
+
+// Schema version written on the <Network> root. Bumped when the serialised
+// shape changes; loaders use it to run migrations (none yet).
+constexpr int kStateVersion = 1;
 
 // Network tree containgin a single root node with id = 0
 juce::ValueTree initEmptyNetwork();

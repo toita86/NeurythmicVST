@@ -2,6 +2,10 @@
 
 #include "../include/Neurythmic/MenuTheme.h"
 
+#ifndef NEURYTHMIC_VERSION
+#define NEURYTHMIC_VERSION "0.0.0"
+#endif
+
 namespace neurythmic {
 
 MainMenu::MainMenu(NetworkController& controller,
@@ -17,6 +21,12 @@ MainMenu::MainMenu(NetworkController& controller,
   addAndMakeVisible(_savePreset);
   addAndMakeVisible(_loadPreset);
   addAndMakeVisible(_mixer);
+  addAndMakeVisible(_version);
+
+  _version.setText("v" NEURYTHMIC_VERSION, juce::dontSendNotification);
+  _version.setJustificationType(juce::Justification::centred);
+  _version.setColour(juce::Label::textColourId, MenuTheme::labelColour);
+  _version.setFont(juce::Font(juce::FontOptions().withHeight(12.0f)));
 
   for (auto* tab : {&_tabCpg, &_tabMixer}) {
     tab->setColour(juce::TextButton::buttonColourId, MenuTheme::background);
@@ -54,6 +64,7 @@ void MainMenu::setTab(int tab) {
   _newPreset.setVisible(cpg);
   _savePreset.setVisible(cpg);
   _loadPreset.setVisible(cpg);
+  _version.setVisible(cpg);
   _mixer.setVisible(!cpg);
   resized();
 }
@@ -74,6 +85,7 @@ void MainMenu::resized() {
   area.removeFromTop(8);
 
   if (_tab == 0) {
+    _version.setBounds(area.removeFromBottom(20).reduced(2));
     _newPreset.setBounds(area.removeFromTop(28));
     area.removeFromTop(6);
     _savePreset.setBounds(area.removeFromTop(28));

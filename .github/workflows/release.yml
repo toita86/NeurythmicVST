@@ -1,0 +1,100 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (e.g. 0.1.0). No Release is created for manual runs."
+        required: true
+        default: "0.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: Linux
+            arch: x86_64
+          - os: windows-latest
+            label: Windows
+            arch: x86_64
+          - os: macos-latest
+            label: macOS
+            arch: universal
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version
+        id: version
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Building version ${VERSION}"
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev libfreetype6-dev libx11-dev libxcomposite-dev \
+            libxcursor-dev libxinerama-dev libxrandr-dev libxrender-dev \
+            libxext-dev libglu1-mesa-dev ninja-build
+
+      - name: Set up MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: cmake --preset release -DNEURYTHMIC_VERSION="${{ env.VERSION }}"
+
+      - name: Build
+        run: cmake --build --preset release
+
+      - name: Stage artefact
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "build/release/NeurythmicPlugin_artefacts/Release/VST3/Neurythmic.zip" \
+             "dist/Neurythmic-v${VERSION}-${{ matrix.label }}-${{ matrix.arch }}.zip"
+
+      - name: Upload artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neurythmic-v${{ env.VERSION }}-${{ matrix.label }}-${{ matrix.arch }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artefacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
