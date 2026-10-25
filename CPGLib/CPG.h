@@ -197,6 +197,16 @@ public:
   // external phasor
   void createExternalSyncResources();
 
+  /// Captures the root node's positive-zero-crossing state (O(cycle)). Used by
+  /// the plugin's hard bar sync.
+  void captureRootZeroState();
+
+  /// Resets node 0 to the captured zero-crossing state so its next event lands
+  /// on the bar boundary.
+  void syncRootToBar();
+
+  bool hasRootZeroState() const { return _hasZeroState; }
+
   ///////////////////////////////////////////////////////////////////////////////
 
 protected:
@@ -211,6 +221,7 @@ private:
   float _drivingInput;
   std::vector<float> _wavetable;
   bool _driven{false};
+  bool _hasZeroState{false};
   matsuoka_internals _zeroState;
 
   /// Removes the specified node from the CPG.

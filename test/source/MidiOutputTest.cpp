@@ -295,7 +295,7 @@ TEST(ProcessBlockMidi, HostTempoDrivesEngineWhenPlaying) {
   juce::MidiBuffer midi;
   processor.processBlock(buffer, midi);
 
-  EXPECT_NEAR(processor.getNodeFrequency(0), 1.5, 0.05);  // 90 / 60
+  EXPECT_NEAR(processor.getNodeFrequency(0), 0.375, 0.01);  // 90 / (60 * 4)
 }
 
 TEST(ProcessBlockMidi, ProducesNoteOnAfterEnoughSamples) {

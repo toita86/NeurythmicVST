@@ -70,12 +70,26 @@ public:
 
   unsigned getNoteDelay() const;
 
+  /// Sets the tempo used to derive the fixed look-ahead delay. This is the
+  /// beat tempo (BPM), intentionally independent of the grid tempo, which may
+  /// be expressed in bars per minute.
+  void setNoteDelayTempo(float bpm);
+
+  /// Positions both grids from an absolute musical position in bars. O(1).
+  void seekToBars(double bars);
+
+  /// Drops any events still waiting in either grid queue.
+  void clearEvents();
+
   unsigned getSampleRate() const;
   float getTempo() const;
   gridType getNodeGrid(unsigned nodeID);
   unsigned getNodeGridMultiple(unsigned nodeID);
   unsigned getNodeGridOffset(unsigned nodeID);
   unsigned getNodeBarDivision(unsigned nodeID);
+
+  /// Current marker/phase of one of the two grids (for diagnostics/tests).
+  noteCoordinate getGridMarker(gridType grid) const;
 
   /// moves to the start of the next bar
   void syncToBarStart();
@@ -177,11 +191,20 @@ private:
       _queueStart = _queueStart->next;
       return ret;
     }
+
+    void clear() {
+      for (auto& event : _pool)
+        event.active = false;
+      _queueStart = nullptr;
+      _queueEnd = nullptr;
+      _cursor = nullptr;
+    }
   };
 
   void setNoteDelays();
   unsigned _delayNotes;
   float _tempo;
+  float _noteDelayTempo;
   float _quantiseAmount;
   unsigned _sampleRate;
   nodeDetails nodes[MAX_NODES];

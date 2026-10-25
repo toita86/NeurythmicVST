@@ -80,8 +80,9 @@ constexpr int kNoParentId = -1;
 constexpr int kMaxNodes = 16;
 
 // Schema version written on the <Network> root. Bumped when the serialised
-// shape changes; loaders use it to run migrations (none yet).
-constexpr int kStateVersion = 1;
+// shape changes; loaders use it to run migrations.
+// v2: child `freq` is a multiple of the root (v1 stored absolute Hz).
+constexpr int kStateVersion = 2;
 
 // Network tree containgin a single root node with id = 0
 juce::ValueTree initEmptyNetwork();

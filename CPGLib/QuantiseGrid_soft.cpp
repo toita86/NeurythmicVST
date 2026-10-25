@@ -57,8 +57,26 @@ unsigned QuantiseGrid_soft::getID() {
   return _id;
 }
 
-QuantiseGrid_soft::noteCoordinate QuantiseGrid_soft::getMarker() {
+QuantiseGrid_soft::noteCoordinate QuantiseGrid_soft::getMarker() const {
   return noteCoordinate(_gridMarker, _phase);
+}
+
+void QuantiseGrid_soft::setPosition(uint64_t marker, float phase) {
+  _gridMarker = marker;
+  // Keep phase in [0, 1) so the next tick behaves like a normal tick.
+  while (phase >= 1.0f) {
+    phase -= 1.0f;
+    ++_gridMarker;
+  }
+  while (phase < 0.0f && _gridMarker > 0) {
+    phase += 1.0f;
+    --_gridMarker;
+  }
+  if (phase < 0.0f)
+    phase = 0.0f;
+  _phase = phase;
+  _nextBar =
+      ((_gridMarker / _divisions) + 1) * static_cast<uint64_t>(_divisions);
 }
 
 QuantiseGrid_soft::noteCoordinate QuantiseGrid_soft::getBarStart() {

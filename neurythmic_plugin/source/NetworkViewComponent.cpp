@@ -52,6 +52,25 @@ NetworkViewComponent::NetworkViewComponent(NetworkController& controller)
       neurythmic::assets::InterMedium_ttfSize);
   _font = juce::Font(juce::FontOptions(typeface).withHeight(
       ConfigManager::get().fontSizeNodeInfo));
+  setWantsKeyboardFocus(true);
+}
+
+bool NetworkViewComponent::keyPressed(const juce::KeyPress& key) {
+  if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) {
+    if (_controller.deleteSelection() > 0) {
+      _controller.clearFocus();
+      repaint();
+    }
+    return true;
+  }
+
+  if (key == juce::KeyPress::escapeKey) {
+    _controller.clearSelection();
+    repaint();
+    return true;
+  }
+
+  return false;
 }
 
 void NetworkViewComponent::update() {
@@ -186,9 +205,6 @@ void NetworkViewComponent::drawLabels(juce::Graphics& g,
                                       const ConfigManager& cfg,
                                       float scaling,
                                       float minDim) {
-  const double rootFreq =
-      _controller.getNodeFrequency(NetworkState::kRootNodeId);
-
   g.setColour(cfg.fontNodeInfoColour);
   g.setFont(_font);
   const float labelHeight = _font.getHeight();
@@ -202,8 +218,7 @@ void NetworkViewComponent::drawLabels(juce::Graphics& g,
             ? cfg.nodeRadius * cfg.node0HaloSize * scaling
             : cfg.nodeRadius * scaling;
 
-    const double freq = _controller.getNodeFrequency(id);
-    const double mult = (rootFreq > 0.0) ? freq / rootFreq : 1.0;
+    const double mult = _controller.getNodeFrequencyMultiple(id);
     g.drawText(formatFreqMultiple(mult),
                juce::Rectangle<float>(cx - 40.0f,
                                       cy - visualRadius - labelHeight - 6.0f,
@@ -259,6 +274,7 @@ void NetworkViewComponent::focusConnection(int from,
 }
 
 void NetworkViewComponent::mouseDown(const juce::MouseEvent& e) {
+  grabKeyboardFocus();
   const float minDim = static_cast<float>(std::min(getWidth(), getHeight()));
   const juce::Point<float> pixel = e.position;
   const juce::Point<float> norm = toNormalised(pixel, minDim);

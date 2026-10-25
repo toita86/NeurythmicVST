@@ -1,0 +1,105 @@
+digraph LegacyArchitecture {
+  graph [
+    rankdir=TB,
+    bgcolor="white",
+    fontname="Helvetica",
+    fontsize=12,
+    pad=0.35,
+    nodesep=0.35,
+    ranksep=0.55,
+    label="Legacy Neurythmic architecture\nopenFrameworks frontend + Max external (cpg.network~)",
+    labelloc=t,
+    fontsize=17
+  ];
+  node [
+    shape=box,
+    style="rounded,filled",
+    fontname="Helvetica",
+    fontsize=10,
+    color="#B26A00",
+    fillcolor="#FFF3E0",
+    penwidth=1.2,
+    margin="0.12,0.08"
+  ];
+  edge [
+    fontname="Helvetica",
+    fontsize=9,
+    color="#555555",
+    arrowsize=0.7
+  ];
+
+  subgraph cluster_frontend {
+    label="Frontend process (GUI + OSC)";
+    fontsize=11;
+    color="#E0A040";
+    style="rounded,dashed";
+    bgcolor="#FFFBF3";
+
+    gui [
+      label="Node menus / Network view\ntempo control: BPM → root = BPM / 60\nchild shown as a rate ratio\npresets store absolute Hz (GUI side)",
+      fillcolor="#FFE0B2"
+    ];
+    presenter [
+      label="GUI_Presenter\nroot freq (inherit = true)\nchild freq (inherit = false)\nquantise grid / multiple / offset / amount"
+    ];
+    osc [
+      label="Matsuoka_OSC_Engine\nOSC bridge + local CPG mirror\n(GUI state only)",
+      fillcolor="#FFECB3"
+    ];
+  }
+
+  subgraph cluster_max {
+    label="Max external: cpg.network~ (audio thread)";
+    fontsize=11;
+    color="#D08020";
+    style="rounded,dashed";
+    bgcolor="#FFF8EE";
+
+    ext [
+      label="cpg.network~\nfrequency inlets\nsetFreq(): root inherit=true,\nchild = root × _freqs[node]",
+      fillcolor="#FFE0B2"
+    ];
+    engine [
+      label="MatsuokaEngine\nroot = absolute Hz (BPM / 60 in GUI)\nchild = root × _freqs[node] (multiple)\nfireOnPeak = false\nzero-crossing triggers"
+    ];
+    cpg [
+      label="CPG network\nMatsuoka nodes\nconnections + weights"
+    ];
+    quant [
+      label="QuantisedEventQueue\ntempo = 60 × root\n24 / 32 grid, multiple, offset\nfreedom = 1 − amount\nlook-ahead ≈ 0.125 s @ 120 BPM"
+    ];
+    grid [
+      label="24 / 32 grid\nlabels: 4/4, 3/4\nresetToBarStart()",
+      fillcolor="#FFF9C4",
+      color="#C0A000"
+    ];
+    out [
+      label="Trigger pulses + audio\nroot event also calls\nsyncToBarStart()",
+      fillcolor="#E8F5E9",
+      color="#2E7D32"
+    ];
+  }
+
+  note [
+    shape=note,
+    style="filled",
+    fillcolor="#FFFDE7",
+    color="#C0A000",
+    fontsize=9,
+    label="No host PPQ / transport.\nRoot oscillator free-runs.\nGrid tempo is derived from root.\nA root event is queued like any other,\nso its note is delayed by the look-ahead."
+  ];
+
+  { rank=same; gui; presenter; osc; }
+  { rank=same; ext; engine; cpg; }
+  { rank=same; quant; grid; out; }
+
+  gui -> presenter;
+  presenter -> osc;
+  osc -> ext [label="OSC /freq/node/\n/quant/grid/ /quant/mult/ ..."];
+  ext -> engine [label="setNodeFrequency()\nsetNodeQuantiser_*()"];
+  engine -> cpg [label="step() per sample"];
+  cpg -> quant [label="node events"];
+  quant -> grid [dir=both, label="root event → syncToBarStart()", color="#C0A000"];
+  quant -> out [label="getNote()"];
+  quant -> note [style=dotted, arrowhead=none, color="#999999"];
+}

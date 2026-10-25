@@ -1,0 +1,113 @@
+digraph QuantisationPipeline {
+  graph [
+    rankdir=TB,
+    bgcolor="white",
+    fontname="Helvetica",
+    fontsize=12,
+    pad=0.35,
+    nodesep=0.3,
+    ranksep=0.45,
+    label="Quantisation pipeline\nlegacy path vs current host-synced path",
+    labelloc=t,
+    fontsize=17
+  ];
+  node [
+    shape=box,
+    style="rounded,filled",
+    fontname="Helvetica",
+    fontsize=10,
+    color="#6A1B9A",
+    fillcolor="#F3E5F5",
+    penwidth=1.2,
+    margin="0.12,0.08"
+  ];
+  edge [
+    fontname="Helvetica",
+    fontsize=9,
+    color="#555555",
+    arrowsize=0.7
+  ];
+
+  event [
+    label="Node event\nlegacy: zeroXup\ncurrent: firstPeak",
+    fillcolor="#EDE7F6"
+  ];
+  root [
+    label="Forced root event\ncurrent host mode only",
+    fillcolor="#FFEBEE",
+    color="#D32F2F"
+  ];
+  gridQ [
+    label="grid type?",
+    shape=diamond,
+    style="filled",
+    fillcolor="#FFF9C4",
+    color="#C0A000",
+    fontsize=10
+  ];
+  unq [
+    label="unQuantised\nraw coordinate\n+ look-ahead",
+    fillcolor="#E8F5E9",
+    color="#2E7D32"
+  ];
+  grid [
+    label="24 / 32 grid\nmultiple + offset",
+    fillcolor="#E3F2FD",
+    color="#1565C0"
+  ];
+  valid [
+    label="previous / next\nvalid gridline"
+  ];
+  soft [
+    label="soft quantise\namount\nfreedom = 1 − amount"
+  ];
+  marker [
+    label="queue marker"
+  ];
+  queue [
+    label="QuantisedEventQueue\ngetNote() when the grid\nreaches the marker",
+    fillcolor="#FFF3E0",
+    color="#B26A00"
+  ];
+  out [
+    label="MIDI note / trigger\noutput",
+    fillcolor="#E8F5E9",
+    color="#2E7D32"
+  ];
+  direct [
+    label="direct output\nno look-ahead delay",
+    fillcolor="#FFEBEE",
+    color="#D32F2F"
+  ];
+  sync [
+    label="legacy root event:\nsyncToBarStart()\n(after look-ahead)",
+    shape=note,
+    style="filled",
+    fillcolor="#FFFDE7",
+    color="#C0A000",
+    fontsize=9
+  ];
+  note [
+    shape=note,
+    style="filled",
+    fillcolor="#FFFDE7",
+    color="#C0A000",
+    fontsize=9,
+    label="Look-ahead = sampleRate × 60 / (beatBPM × 4)\n≈ 0.125 s at 120 BPM (preserved from legacy).\nCurrent host mode seeds the grid from PPQ and\nforces the root directly, so the root note is on\nthe bar instead of one look-ahead late."
+  ];
+
+  event -> gridQ;
+  gridQ -> unq [label="OFF"];
+  gridQ -> grid [label="24 / 32"];
+  grid -> valid -> soft -> marker;
+  unq -> marker;
+  marker -> queue;
+  queue -> out [label="event due"];
+  queue -> sync [style=dashed, label="root event", color="#C0A000"];
+  root -> direct -> out [color="#D32F2F", fontcolor="#D32F2F"];
+  queue -> note [style=dotted, arrowhead=none, color="#999999"];
+
+  { rank=same; event; root; }
+  { rank=same; unq; grid; }
+  { rank=same; queue; direct; }
+}

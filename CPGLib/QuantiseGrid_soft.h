@@ -27,7 +27,11 @@ public:
 
   unsigned getID();
 
-  noteCoordinate getMarker();
+  noteCoordinate getMarker() const;
+
+  /// Directly positions the grid at a musical coordinate. Used when the host
+  /// transport seeks: O(1), never advances tick-by-tick.
+  void setPosition(uint64_t marker, float phase);
 
   noteCoordinate getBarStart();
 

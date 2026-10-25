@@ -25,6 +25,7 @@ public:
   void mouseUp(const juce::MouseEvent& e) override;
   void mouseMove(const juce::MouseEvent& e) override;
   void mouseExit(const juce::MouseEvent& e) override;
+  bool keyPressed(const juce::KeyPress& key) override;
 
 private:
   void drawConnections(juce::Graphics& g,

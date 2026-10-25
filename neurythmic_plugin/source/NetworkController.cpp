@@ -62,9 +62,17 @@ juce::Point<float> NetworkController::getNodePosition(int nodeId) const {
 }
 
 double NetworkController::getNodeFrequency(int nodeId) const {
+  if (!NetworkState::getNode(_network, nodeId).isValid())
+    return 0.0;
+  return _engine.getNodeFrequency(static_cast<unsigned>(nodeId));
+}
+
+double NetworkController::getNodeFrequencyMultiple(int nodeId) const {
   juce::ValueTree n = NetworkState::getNode(_network, nodeId);
   if (!n.isValid())
     return 0.0;
+  if (nodeId == NetworkState::kRootNodeId)
+    return 1.0;
   return static_cast<double>(n.getProperty(NetworkState::Props::freq));
 }
 
@@ -113,12 +121,14 @@ int NetworkController::createChild(int parentId) {
     return -1;  // node limit (16) reached
 
   juce::Point<float> pos = positionNewNode(parentId);
-  double freq = _engine.getNodeFrequency(0) * _config.newNodeFreqMultiple;
+  const double multiple = _config.newNodeFreqMultiple;
+  const double rootFreq = _engine.getNodeFrequency(0);
+  const double freq = (rootFreq > 0.0 ? rootFreq : 1.0) * multiple;
 
-  // ValueTree first
+  // ValueTree first (canonical: the multiple of the root)
   juce::ValueTree node = NetworkState::createNode(_network, newId, parentId,
                                                   pos.getX(), pos.getY());
-  node.setProperty(NetworkState::Props::freq, freq, nullptr);
+  node.setProperty(NetworkState::Props::freq, multiple, nullptr);
   setNodeParameterDefaults(node);
 
   double weight =
@@ -169,6 +179,15 @@ void NetworkController::deleteNode(int nodeId) {
   _engine.doQueuedActions();
 
   _soloedNodes.erase(nodeId);
+  _selectedNodes.erase(nodeId);
+  if (_selectedConnectionFrom == nodeId || _selectedConnectionTo == nodeId) {
+    _selectedConnectionFrom = -1;
+    _selectedConnectionTo = -1;
+  }
+  if (_focus.nodeId == nodeId)
+    clearFocus();
+  if (_prevFocus.nodeId == nodeId)
+    _prevFocus = Focus{};
   publishMixerSnapshot();
 }
 
@@ -194,8 +213,14 @@ void NetworkController::rebuild(const juce::ValueTree& newRoot) {
 
   // Restore root frequency.
   juce::ValueTree root = getNode(newRoot, kRootNodeId);
-  double rootFreq = static_cast<double>(root.getProperty(Props::freq));
+  const double rootFreq = static_cast<double>(root.getProperty(Props::freq));
   _engine.setNodeFrequency(0, rootFreq, false);
+
+  // Version-1 presets stored absolute child Hz; version 2 stores multiples.
+  const int loadedVersion =
+      static_cast<int>(newRoot.getProperty(Props::stateVersion, 1));
+  const bool needsMigration = loadedVersion < kStateVersion;
+  const double currentRoot = _engine.getNodeFrequency(0);
 
   // Topological add: parents before children (root already present).
   std::vector<juce::ValueTree> pending;
@@ -214,7 +239,11 @@ void NetworkController::rebuild(const juce::ValueTree& newRoot) {
           std::find(added.begin(), added.end(), parent) != added.end();
       if (parentReady) {
         int id = static_cast<int>(it->getProperty(Props::id));
-        double freq = static_cast<double>(it->getProperty(Props::freq));
+        const double value = static_cast<double>(it->getProperty(Props::freq));
+        const double multiple =
+            (needsMigration && rootFreq > 0.0) ? value / rootFreq : value;
+        it->setProperty(Props::freq, multiple, nullptr);
+        const double freq = (currentRoot > 0.0 ? currentRoot : 1.0) * multiple;
         juce::ValueTree pc = it->getChildWithProperty(Props::sourceId, parent);
         double weight = pc.isValid()
                             ? static_cast<double>(pc.getProperty(Props::weight))
@@ -272,10 +301,8 @@ void NetworkController::rebuild(const juce::ValueTree& newRoot) {
   _engine.doQueuedActions();
 
   _network = newRoot.createCopy();  // controller owns a deep copy
-  // Pre-Phase-8 presets predate the schema version; treat them as version 1 so
-  // future migrations have a hook.
-  if (!_network.hasProperty(Props::stateVersion))
-    _network.setProperty(Props::stateVersion, kStateVersion, nullptr);
+  // Loading always upgrades the in-memory tree to the current schema version.
+  _network.setProperty(Props::stateVersion, kStateVersion, nullptr);
   _soloedNodes.clear();
   publishMixerSnapshot();
 }
@@ -376,8 +403,33 @@ void NetworkController::setNodeFrequency(int nodeId,
   juce::ValueTree node = NetworkState::getNode(_network, nodeId);
   if (!node.isValid())
     return;
-  node.setProperty(NetworkState::Props::freq, freq, nullptr);
+
+  if (nodeId == NetworkState::kRootNodeId) {
+    node.setProperty(NetworkState::Props::freq, freq, nullptr);
+  } else {
+    const double rootFreq = _engine.getNodeFrequency(0);
+    node.setProperty(NetworkState::Props::freq,
+                     rootFreq > 0.0 ? freq / rootFreq : freq, nullptr);
+  }
+
   _engine.setNodeFrequency(static_cast<unsigned>(nodeId), freq, inherit);
+  _engine.doQueuedActions();
+  notifyNetworkChanged();
+}
+
+void NetworkController::setNodeFrequencyMultiple(int nodeId, double multiple) {
+  if (nodeId == NetworkState::kRootNodeId)
+    return;  // root frequency is the host tempo / global rootFreq
+
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return;
+
+  node.setProperty(NetworkState::Props::freq, multiple, nullptr);
+
+  const double rootFreq = _engine.getNodeFrequency(0);
+  const double absolute = (rootFreq > 0.0 ? rootFreq : 1.0) * multiple;
+  _engine.setNodeFrequency(static_cast<unsigned>(nodeId), absolute, false);
   _engine.doQueuedActions();
   notifyNetworkChanged();
 }
@@ -736,6 +788,60 @@ void NetworkController::selectConnection(int from, int to) {
 
 bool NetworkController::isConnectionSelected(int from, int to) const {
   return _selectedConnectionFrom == from && _selectedConnectionTo == to;
+}
+
+bool NetworkController::getSelectedConnection(int& from, int& to) const {
+  if (_selectedConnectionFrom < 0 || _selectedConnectionTo < 0)
+    return false;
+  from = _selectedConnectionFrom;
+  to = _selectedConnectionTo;
+  return true;
+}
+
+int NetworkController::deleteSelection() {
+  int deleted = 0;
+
+  // Delete the selected connection first; it may reference a node that is also
+  // selected. Parent edges are structural and cannot be removed.
+  int from = -1;
+  int to = -1;
+  if (getSelectedConnection(from, to)) {
+    const bool isParentEdge = getNodeParent(to) == from;
+    const bool exists =
+        NetworkState::getNode(_network, to)
+            .getChildWithProperty(NetworkState::Props::sourceId, from)
+            .isValid();
+    if (exists && !isParentEdge) {
+      removeConnection(from, to);
+      ++deleted;
+    }
+  }
+
+  // Snapshot the deletable set before mutating the tree: selecting a parent and
+  // its child deletes only the leaf, matching the menu restrictions.
+  std::vector<int> leaves;
+  for (int id : getNodeIds()) {
+    if (id == NetworkState::kRootNodeId || !isNodeSelected(id))
+      continue;
+
+    bool hasChildren = false;
+    NetworkState::forEachNode(_network, [&](juce::ValueTree n) {
+      if (static_cast<int>(n.getProperty(NetworkState::Props::parentId)) == id)
+        hasChildren = true;
+    });
+    if (!hasChildren)
+      leaves.push_back(id);
+  }
+
+  for (int id : leaves) {
+    if (!NetworkState::getNode(_network, id).isValid())
+      continue;
+    deleteNode(id);
+    ++deleted;
+  }
+
+  clearSelection();
+  return deleted;
 }
 
 void NetworkController::clearSelection() {

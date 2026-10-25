@@ -566,6 +566,22 @@ void MatsuokaEngine::zeroSync(unsigned nodeID) {
   _cpg.zeroSync(nodeID);
 }
 
+void MatsuokaEngine::captureRootZeroState() {
+  std::function<void()> fn = [this] { _cpg.captureRootZeroState(); };
+
+  std::lock_guard<std::mutex> lock(_actions_mutex);
+  _actions.push(fn);
+}
+
+void MatsuokaEngine::syncRootToBarNow() {
+  _cpg.syncRootToBar();
+  _forceRootEvent = true;
+}
+
+void MatsuokaEngine::setSuppressNaturalRootEvents(bool suppress) {
+  _suppressNaturalRootEvents = suppress;
+}
+
 void MatsuokaEngine::_setSampleRate(unsigned sampleRate) {
   _sampleRate = sampleRate;
   _cpg.setSampleRate(sampleRate);
@@ -579,11 +595,32 @@ void MatsuokaEngine::fillOutputs() {
 
   std::lock_guard<std::mutex> lock(_output_mutex);
 
+  const bool forcedRoot = _forceRootEvent;
+  _forceRootEvent = false;
+
   const std::vector<unsigned>& IDs = _cpg.getNodeList();
   std::vector<unsigned>::const_iterator iter = IDs.begin();
 
   while (iter != IDs.end()) {
     MatsuNode const& thisNode = _cpg.getNode(*iter);
+
+    if (thisNode.getIdentifier() == 0) {
+      if (forcedRoot) {
+        // Emit the bar event directly: it must not inherit the quantiser's
+        // look-ahead delay. The grid is host-seeded, so no syncToBarStart.
+        outputEvent e = {0, 1.0};
+        _outputs.push_back(e);
+        if (_eventCallback)
+          _eventCallback(0, 1.0f);
+        synchroniseChildren(thisNode.getChildIDs());
+        ++iter;
+        continue;
+      }
+      if (_suppressNaturalRootEvents) {
+        ++iter;
+        continue;
+      }
+    }
 
     if (_fireOnPeak &&
         (_eventOnRise && thisNode.getSignalState() == signalState::firstPeak)) {
@@ -680,6 +717,68 @@ void MatsuokaEngine::synchroniseChildren(std::vector<unsigned> childIDs) {
 }
 
 void MatsuokaEngine::updateQuantiserTempo() {
+  if (_quantiserTempoOverride > 0.0f) {
+    _quantiser.setTempo(_quantiserTempoOverride);
+    return;
+  }
   float freq = (float)_cpg.getNode(0).getFrequency(_sampleRate);
   _quantiser.setTempo(60.0f * freq);
+}
+
+void MatsuokaEngine::setQuantiserTempo(float barsPerMin) {
+  std::function<void()> fn = [this, barsPerMin] {
+    _quantiserTempoOverride = barsPerMin;
+    if (barsPerMin > 0.0f)
+      _quantiser.setTempo(barsPerMin);
+  };
+
+  std::lock_guard<std::mutex> lock(_actions_mutex);
+  _actions.push(fn);
+}
+
+void MatsuokaEngine::clearQuantiserTempoOverride() {
+  std::function<void()> fn = [this] {
+    _quantiserTempoOverride = 0.0f;
+    updateQuantiserTempo();
+  };
+
+  std::lock_guard<std::mutex> lock(_actions_mutex);
+  _actions.push(fn);
+}
+
+float MatsuokaEngine::getQuantiserTempo() const {
+  return _quantiser.getTempo();
+}
+
+void MatsuokaEngine::setQuantiserNoteDelayTempo(float bpm) {
+  std::function<void()> fn = [this, bpm] { _quantiser.setNoteDelayTempo(bpm); };
+
+  std::lock_guard<std::mutex> lock(_actions_mutex);
+  _actions.push(fn);
+}
+
+unsigned MatsuokaEngine::getQuantiserNoteDelay() const {
+  return _quantiser.getNoteDelay();
+}
+
+void MatsuokaEngine::seekQuantiserToBars(double bars) {
+  std::function<void()> fn = [this, bars] { _quantiser.seekToBars(bars); };
+
+  std::lock_guard<std::mutex> lock(_actions_mutex);
+  _actions.push(fn);
+}
+
+void MatsuokaEngine::clearQuantiserEvents() {
+  std::function<void()> fn = [this] { _quantiser.clearEvents(); };
+
+  std::lock_guard<std::mutex> lock(_actions_mutex);
+  _actions.push(fn);
+}
+
+uint64_t MatsuokaEngine::getQuantiserGridMarker(gridType grid) const {
+  return _quantiser.getGridMarker(grid).gridline;
+}
+
+float MatsuokaEngine::getQuantiserGridPhase(gridType grid) const {
+  return _quantiser.getGridMarker(grid).phase;
 }

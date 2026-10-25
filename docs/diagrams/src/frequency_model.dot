@@ -1,0 +1,126 @@
+digraph FrequencyModel {
+  graph [
+    rankdir=TB,
+    bgcolor="white",
+    fontname="Helvetica",
+    fontsize=12,
+    pad=0.35,
+    nodesep=0.35,
+    ranksep=0.5,
+    label="Frequency model\nlegacy audio engine vs current canonical state",
+    labelloc=t,
+    fontsize=17
+  ];
+  node [
+    shape=box,
+    style="rounded,filled",
+    fontname="Helvetica",
+    fontsize=10,
+    penwidth=1.2,
+    margin="0.12,0.08"
+  ];
+  edge [
+    fontname="Helvetica",
+    fontsize=9,
+    color="#555555",
+    arrowsize=0.7
+  ];
+
+  subgraph cluster_legacy {
+    label="Legacy";
+    fontsize=12;
+    color="#B26A00";
+    style="rounded,dashed";
+    bgcolor="#FFFBF3";
+
+    legacyRoot [
+      label="root = BPM / 60\n(beat rate, absolute Hz)",
+      fillcolor="#FFE0B2",
+      color="#B26A00"
+    ];
+    legacyChild [
+      label="audio engine (Max external)\nchild actual = root × _freqs[node]\n_freqs[node] is a multiple",
+      fillcolor="#FFF3E0",
+      color="#B26A00"
+    ];
+    legacyGui [
+      label="frontend / GUI\nchild menu sends ratio-like values;\npresets store absolute Hz",
+      shape=note,
+      style="filled",
+      fillcolor="#FFFDE7",
+      color="#C0A000",
+      fontsize=9
+    ];
+    legacyChange [
+      label="BPM change\nroot inherit=true → children scale\n_freqs[node] multiples stay unchanged",
+      fillcolor="#FFECB3",
+      color="#B26A00"
+    ];
+  }
+
+  subgraph cluster_current {
+    label="Current (Phase 10)";
+    fontsize=12;
+    color="#1565C0";
+    style="rounded,dashed";
+    bgcolor="#F7FBFF";
+
+    curRoot [
+      label="root = BPM / (60 × beatsPerBar)\n(bar rate, Hz)",
+      fillcolor="#BBDEFB",
+      color="#1565C0"
+    ];
+    curChild [
+      label="child = canonical multiple\nProps::freq = node / root",
+      fillcolor="#E3F2FD",
+      color="#1565C0"
+    ];
+    curEngine [
+      label="engine absolute\n= root × multiple",
+      fillcolor="#E1F5FE",
+      color="#1565C0"
+    ];
+    curChange [
+      label="tempo / meter change\nroot inherit=true → children scale\nmultiples stay unchanged",
+      fillcolor="#E8F5E9",
+      color="#2E7D32"
+    ];
+    curPreset [
+      label="preset v2 stores multiples\nload at any tempo preserves the ratio",
+      shape=note,
+      style="filled",
+      fillcolor="#E8F5E9",
+      color="#2E7D32",
+      fontsize=9
+    ];
+  }
+
+  oldPlugin [
+    shape=note,
+    style="filled",
+    fillcolor="#FFF3E0",
+    color="#B26A00",
+    fontsize=9,
+    label="old plugin v1 presets\nstored absolute Hz\n(not the legacy frontend presets)"
+  ];
+  migrate [
+    shape=note,
+    style="filled",
+    fillcolor="#FFEBEE",
+    color="#D32F2F",
+    fontsize=9,
+    label="v1 → v2 migration\nmultiple = childAbs / rootAbs\n(best effort: old plugin root may be stale)"
+  ];
+
+  legacyRoot -> legacyChild [label="setFreq(0, ..., true)"];
+  legacyChild -> legacyChange [label="root change"];
+  legacyGui -> legacyChild [style=dotted, label="sets _freqs[node]", arrowhead=none];
+
+  curRoot -> curChild [label="create child"];
+  curChild -> curEngine [label="derive"];
+  curEngine -> curChange [label="root change"];
+  curChild -> curPreset [style=dotted, arrowhead=none];
+
+  oldPlugin -> migrate [label="load v1"];
+  migrate -> curChild [style=dashed, label="migrate"];
+}

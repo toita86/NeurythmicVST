@@ -6,6 +6,7 @@ QuantisedEventQueue::QuantisedEventQueue(unsigned sampleRate, float tempo)
       _mark24(0, 0),
       _mark32(0, 0) {
   _tempo = tempo;
+  _noteDelayTempo = tempo;
   _sampleRate = sampleRate;
   setNoteDelays();
   _quantiseAmount = 1;
@@ -24,6 +25,7 @@ QuantisedEventQueue::QuantisedEventQueue(const QuantisedEventQueue& rhs)
       _mark24(0, 0),
       _mark32(0, 0) {
   _tempo = rhs.getTempo();
+  _noteDelayTempo = rhs._noteDelayTempo;
   _sampleRate = rhs.getSampleRate();
   setNoteDelays();
 }
@@ -181,13 +183,49 @@ void QuantisedEventQueue::syncToBarStart() {
 }
 
 void QuantisedEventQueue::setNoteDelays() {
-  // all notes are delayed a 1/4 note - this allows free and
-  // quantised notes to be played alongside each other
-  _delayNotes = (unsigned)((_sampleRate * 60) / (_tempo * 4));
+  // All notes are delayed by a quarter of a beat; this allows free and
+  // quantised notes to be played alongside each other. The delay is derived
+  // from the beat tempo, not from the grid tempo (which may be bars/min).
+  const float delayTempo = _noteDelayTempo > 0.0f ? _noteDelayTempo : 120.0f;
+  _delayNotes = (unsigned)((_sampleRate * 60) / (delayTempo * 4));
   _grid24.setDelay(_delayNotes);
   _grid32.setDelay(_delayNotes);
 }
 
 unsigned QuantisedEventQueue::getNoteDelay() const {
   return _delayNotes;
+}
+
+void QuantisedEventQueue::setNoteDelayTempo(float bpm) {
+  if (bpm <= 0.0f)
+    return;
+  _noteDelayTempo = bpm;
+  setNoteDelays();
+}
+
+void QuantisedEventQueue::seekToBars(double bars) {
+  if (bars < 0.0)
+    bars = 0.0;
+
+  auto seed = [bars](QuantiseGrid_soft& grid, unsigned divisions) {
+    const double step = bars * static_cast<double>(divisions);
+    const auto marker = static_cast<uint64_t>(step);
+    const auto phase = static_cast<float>(step - static_cast<double>(marker));
+    grid.setPosition(marker, phase);
+  };
+
+  seed(_grid24, 24);
+  seed(_grid32, 32);
+  _mark24 = _grid24.getMarker();
+  _mark32 = _grid32.getMarker();
+}
+
+void QuantisedEventQueue::clearEvents() {
+  _eventQueue24.clear();
+  _eventQueue32.clear();
+}
+
+QuantisedEventQueue::noteCoordinate QuantisedEventQueue::getGridMarker(
+    gridType grid) const {
+  return grid == gridType::_24th ? _grid24.getMarker() : _grid32.getMarker();
 }
