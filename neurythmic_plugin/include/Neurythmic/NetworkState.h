@@ -52,6 +52,8 @@ inline const juce::Identifier stateVersion{"stateVersion"};
 // Node properties
 inline const juce::Identifier id{"id"};
 inline const juce::Identifier parentId{"parentId"};
+// Root: canonical standalone root frequency in Hz (host mode derives its
+// effective bar rate separately). Children: canonical multiple of the root.
 inline const juce::Identifier freq{"freq"};
 inline const juce::Identifier phaseOffset{"phaseOffset"};
 inline const juce::Identifier noise{"noise"};

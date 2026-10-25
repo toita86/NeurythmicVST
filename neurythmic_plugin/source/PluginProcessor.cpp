@@ -43,6 +43,8 @@ PluginProcessor::PluginProcessor()
   // Phase 7: mirror per-node parameter changes into the APVTS automation
   // facade, and listen for host automation to push back into the controller.
   _controller.setOnNetworkChanged([this] { syncAllNodeParams(); });
+  _apvts.addParameterListener("rootFreq", this);
+  _apvts.addParameterListener("fireOnPeak", this);
   for (int id = 0; id < NetworkState::kMaxNodes; ++id) {
     if (id != NetworkState::kRootNodeId)
       _apvts.addParameterListener(nodeParamId(id, "freq"), this);
@@ -51,11 +53,14 @@ PluginProcessor::PluginProcessor()
     _apvts.addParameterListener(nodeParamId(id, "mute"), this);
     _apvts.addParameterListener(nodeParamId(id, "quantAmount"), this);
   }
+  _controller.setRootFrequency(_apvts.getRawParameterValue("rootFreq")->load());
+  _engine.setFireOnPeak(_apvts.getRawParameterValue("fireOnPeak")->load() >
+                        0.5f);
   syncAllNodeParams();
 
-  // Host-grid mapping is owned by the processor (not the editor) so it keeps
-  // working with the plugin window closed. Message thread only.
-  startTimerHz(10);
+  // Host-grid mapping and visual-event draining are owned by the processor
+  // (not the editor) so they keep working with the plugin window closed.
+  startTimerHz(30);
 }
 
 PluginProcessor::~PluginProcessor() {
@@ -93,11 +98,25 @@ void PluginProcessor::changeProgramName(int, const juce::String&) {}
 
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   _engine.setSampleRate(static_cast<unsigned>(sampleRate));
+  _engine.doQueuedActions();
+
+  // Frequency compensation is sample-rate dependent. The constructor
+  // calibrates at 44.1 kHz; recalibrate whenever the host chooses another rate
+  // (48/96 kHz are common). Calibration runs on the non-realtime prepare path.
+  if (std::abs(sampleRate - _lastCalibratedSampleRate) > 0.5) {
+    _engine.setFreqCompensation(ConfigManager::get().freqCompensation);
+    _engine.doQueuedActions();
+    _engine.calibrate();
+    _lastCalibratedSampleRate = sampleRate;
+  }
+
   // Capture the root zero-crossing state once; the hard bar sync reuses it.
   _engine.captureRootZeroState();
   _engine.doQueuedActions();
   _rootZeroStateCaptured = true;
-  juce::ignoreUnused(sampleRate, samplesPerBlock);
+  _lastAppliedRootFreq = -1.0f;
+  _lastQuantiserDelayBpm = -1.0f;
+  juce::ignoreUnused(samplesPerBlock);
 }
 
 void PluginProcessor::releaseResources() {}
@@ -124,6 +143,8 @@ PluginProcessor::createParameterLayout() {
       "masterVolume", "Master Volume", 0.0f, 1.0f, 0.8f));
   layout.add(std::make_unique<juce::AudioParameterFloat>(
       "masterQuantAmount", "Quantise Amount", 0.0f, 1.0f, 0.7f));
+  layout.add(std::make_unique<juce::AudioParameterBool>("fireOnPeak",
+                                                        "Fire on Peak", true));
   layout.add(std::make_unique<juce::AudioParameterBool>(
       "velocityMode", "Velocity Mode (Amplitude)", true));
   layout.add(std::make_unique<juce::AudioParameterChoice>(
@@ -352,8 +373,60 @@ void PluginProcessor::process(juce::MidiBuffer& midiMessages, int numSamples) {
   }
 }
 
+juce::ValueTree PluginProcessor::createStateTree() {
+  // Save both halves of the canonical state: the network tree (root + nodes)
+  // and the APVTS (master controls, root parameter, trigger mode). Older
+  // presets were a single <Network> tree; restoreStateTree still accepts that
+  // shape.
+  juce::ValueTree state("NeurythmicState");
+  state.setProperty("formatVersion", 1, nullptr);
+  state.addChild(_controller.getTree().createCopy(), -1, nullptr);
+  state.addChild(_apvts.copyState(), -1, nullptr);
+  return state;
+}
+
+void PluginProcessor::restoreStateTree(const juce::ValueTree& state) {
+  if (!state.isValid())
+    return;
+
+  juce::ValueTree network;
+  juce::ValueTree parameters;
+  if (state.hasType("Network")) {
+    network = state;  // legacy single-tree preset
+  } else {
+    network = state.getChildWithName("Network");
+    parameters = state.getChildWithName("Parameters");
+  }
+  if (!network.isValid())
+    return;
+
+  if (parameters.isValid()) {
+    _syncingParams = true;
+    _apvts.replaceState(parameters);
+    _syncingParams = false;
+  }
+
+  _controller.rebuild(network);
+  // The rebuild writes the loaded standalone root into the engine. Force the
+  // next process block to re-apply the host-derived root while playing.
+  _lastAppliedRootFreq = -1.0f;
+
+  // The tree root is canonical. Mirror it into the APVTS root parameter after
+  // the tree has been rebuilt, without re-entering parameterChanged.
+  _syncingParams = true;
+  if (auto* rootParam = _apvts.getParameter("rootFreq")) {
+    rootParam->setValueNotifyingHost(rootParam->convertTo0to1(
+        static_cast<float>(_controller.getRootFrequency())));
+  }
+  _syncingParams = false;
+
+  syncGlobalParams();
+  syncAllNodeParams();
+  _midiResetRequested.store(true);
+}
+
 void PluginProcessor::getStateInformation(juce::MemoryBlock& destData) {
-  auto xml = _controller.getTree().createXml();
+  auto xml = createStateTree().createXml();
   if (xml == nullptr)
     return;
 
@@ -373,12 +446,7 @@ void PluginProcessor::setStateInformation(const void* data, int sizeInBytes) {
   if (xml == nullptr)
     return;
 
-  juce::ValueTree tree = juce::ValueTree::fromXml(*xml);
-  if (!tree.isValid())
-    return;
-
-  _controller.rebuild(tree);
-  _midiResetRequested.store(true);
+  restoreStateTree(juce::ValueTree::fromXml(*xml));
 }
 
 juce::AudioProcessorEditor* PluginProcessor::createEditor() {
@@ -416,6 +484,16 @@ void PluginProcessor::parameterChanged(const juce::String& parameterID,
                                        float newValue) {
   if (_syncingParams)
     return;  // our own writeback, not host automation
+
+  if (parameterID == "fireOnPeak") {
+    _engine.setFireOnPeak(newValue > 0.5f);
+    return;
+  }
+  if (parameterID == "rootFreq") {
+    _controller.setRootFrequency(static_cast<double>(newValue));
+    return;
+  }
+
   if (!parameterID.startsWith("node_"))
     return;
 
@@ -474,10 +552,22 @@ void PluginProcessor::applyHostGrid() {
       _hostTimeSigNumerator.load(), _hostTimeSigDenominator.load()));
 }
 
-void PluginProcessor::timerCallback() {
+void PluginProcessor::serviceMessageThread() {
   // Cheap (one compare per existing node) and also picks up nodes created
-  // since the last tick. Runs on the message thread; no audio-thread work.
+  // since the last tick. Draining visual events here, rather than in the
+  // editor, keeps the backlog bounded when the window is closed and makes
+  // standalone (non-host-transport) visuals work.
   applyHostGrid();
+  _controller.updateFromEngine();
+}
+
+void PluginProcessor::syncGlobalParams() {
+  _engine.setFireOnPeak(_apvts.getRawParameterValue("fireOnPeak")->load() >
+                        0.5f);
+}
+
+void PluginProcessor::timerCallback() {
+  serviceMessageThread();
 }
 
 int PluginProcessor::getTransportResyncCount() const {

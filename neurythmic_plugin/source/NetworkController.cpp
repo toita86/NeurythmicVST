@@ -36,11 +36,12 @@ NetworkController::NetworkController(MatsuokaEngine& engine,
     _flashEnvelopes.emplace_back(frameRate);
   _clickOffsets.assign(NetworkState::kMaxNodes, juce::Point<float>{});
 
-  // Mirror the engine's root frequency into the tree.
+  // Root Props::freq is the canonical standalone root. The engine's
+  // host-derived bar rate is display-only and must never be written back here.
+  _canonicalRootFreq = _engine.getNodeFrequency(0);
   juce::ValueTree root =
       NetworkState::getNode(_network, NetworkState::kRootNodeId);
-  root.setProperty(NetworkState::Props::freq, _engine.getNodeFrequency(0),
-                   nullptr);
+  root.setProperty(NetworkState::Props::freq, _canonicalRootFreq, nullptr);
   setNodeParameterDefaults(root);
   publishMixerSnapshot();
 }
@@ -74,6 +75,24 @@ double NetworkController::getNodeFrequencyMultiple(int nodeId) const {
   if (nodeId == NetworkState::kRootNodeId)
     return 1.0;
   return static_cast<double>(n.getProperty(NetworkState::Props::freq));
+}
+
+void NetworkController::setRootFrequency(double freq) {
+  if (!(freq > 0.0))
+    return;
+  _canonicalRootFreq = freq;
+  juce::ValueTree root =
+      NetworkState::getNode(_network, NetworkState::kRootNodeId);
+  if (root.isValid())
+    root.setProperty(NetworkState::Props::freq, freq, nullptr);
+}
+
+double NetworkController::getRootFrequency() const {
+  juce::ValueTree root =
+      NetworkState::getNode(_network, NetworkState::kRootNodeId);
+  if (!root.isValid())
+    return _canonicalRootFreq;
+  return static_cast<double>(root.getProperty(NetworkState::Props::freq));
 }
 
 int NetworkController::getNodeBarDivision(int nodeId) const {
@@ -130,6 +149,11 @@ int NetworkController::createChild(int parentId) {
                                                   pos.getX(), pos.getY());
   node.setProperty(NetworkState::Props::freq, multiple, nullptr);
   setNodeParameterDefaults(node);
+  // If the host grid is already known, apply it immediately rather than
+  // waiting for the next 30 Hz service tick.
+  if (_lastHostGridValid && getNodeQuantiseGridFollowHost(newId))
+    node.setProperty(NetworkState::Props::quantGrid,
+                     static_cast<int>(_lastHostGrid), nullptr);
 
   double weight =
       calcWeight(parentId, newId, _config.newParentChildConnWeightScale);
@@ -146,6 +170,7 @@ int NetworkController::createChild(int parentId) {
   _engine.addChild(parentId, newId);
   _engine.setNodeFrequency(newId, freq, false);
   _engine.setConnection(parentId, newId, weight);
+  applyNodeQuantiserToEngine(newId);
   _engine.doQueuedActions();
 
   publishMixerSnapshot();
@@ -176,6 +201,7 @@ void NetworkController::deleteNode(int nodeId) {
 
   NetworkState::removeNode(_network, nodeId);  // ValueTree first
   _engine.deleteNode(nodeId);                  // Engine second
+  resetNodeQuantiserToDefaults(nodeId);
   _engine.doQueuedActions();
 
   _soloedNodes.erase(nodeId);
@@ -192,11 +218,11 @@ void NetworkController::deleteNode(int nodeId) {
 }
 
 void NetworkController::clear() {
+  _canonicalRootFreq = getRootFrequency();
   _network = NetworkState::initEmptyNetwork();
   juce::ValueTree root =
       NetworkState::getNode(_network, NetworkState::kRootNodeId);
-  root.setProperty(NetworkState::Props::freq, _engine.getNodeFrequency(0),
-                   nullptr);
+  root.setProperty(NetworkState::Props::freq, _canonicalRootFreq, nullptr);
   setNodeParameterDefaults(root);
   _soloedNodes.clear();
   _engine.clear();
@@ -211,9 +237,14 @@ void NetworkController::rebuild(const juce::ValueTree& newRoot) {
   _engine.clear();  // back to single root (defaults)
   _engine.doQueuedActions();
 
-  // Restore root frequency.
+  // Restore the canonical standalone root. Old presets may contain the
+  // host-derived bar rate; clamp obviously invalid values instead of feeding
+  // the engine a zero/negative frequency.
   juce::ValueTree root = getNode(newRoot, kRootNodeId);
-  const double rootFreq = static_cast<double>(root.getProperty(Props::freq));
+  double rootFreq = static_cast<double>(root.getProperty(Props::freq));
+  if (!(rootFreq > 0.0) || !std::isfinite(rootFreq))
+    rootFreq = _canonicalRootFreq > 0.0 ? _canonicalRootFreq : 2.0;
+  _canonicalRootFreq = rootFreq;
   _engine.setNodeFrequency(0, rootFreq, false);
 
   // Version-1 presets stored absolute child Hz; version 2 stores multiples.
@@ -239,9 +270,13 @@ void NetworkController::rebuild(const juce::ValueTree& newRoot) {
           std::find(added.begin(), added.end(), parent) != added.end();
       if (parentReady) {
         int id = static_cast<int>(it->getProperty(Props::id));
-        const double value = static_cast<double>(it->getProperty(Props::freq));
-        const double multiple =
+        double value = static_cast<double>(it->getProperty(Props::freq));
+        double multiple =
             (needsMigration && rootFreq > 0.0) ? value / rootFreq : value;
+        if (!(multiple > 0.0) || !std::isfinite(multiple))
+          multiple = _config.newNodeFreqMultiple > 0.0
+                         ? _config.newNodeFreqMultiple
+                         : 1.0;
         it->setProperty(Props::freq, multiple, nullptr);
         const double freq = (currentRoot > 0.0 ? currentRoot : 1.0) * multiple;
         juce::ValueTree pc = it->getChildWithProperty(Props::sourceId, parent);
@@ -303,6 +338,9 @@ void NetworkController::rebuild(const juce::ValueTree& newRoot) {
   _network = newRoot.createCopy();  // controller owns a deep copy
   // Loading always upgrades the in-memory tree to the current schema version.
   _network.setProperty(Props::stateVersion, kStateVersion, nullptr);
+  auto loadedRoot = getNode(_network, kRootNodeId);
+  if (loadedRoot.isValid())
+    loadedRoot.setProperty(Props::freq, rootFreq, nullptr);
   _soloedNodes.clear();
   publishMixerSnapshot();
 }
@@ -405,7 +443,7 @@ void NetworkController::setNodeFrequency(int nodeId,
     return;
 
   if (nodeId == NetworkState::kRootNodeId) {
-    node.setProperty(NetworkState::Props::freq, freq, nullptr);
+    setRootFrequency(freq);
   } else {
     const double rootFreq = _engine.getNodeFrequency(0);
     node.setProperty(NetworkState::Props::freq,
@@ -933,17 +971,9 @@ void NetworkController::updateFromEngine() {
   for (auto& env : _flashEnvelopes)
     env.step();
 
-  // Reflect engine frequencies into the tree only when they change.
-  for (unsigned nodeId : _engine.getNodeList()) {
-    juce::ValueTree n =
-        NetworkState::getNode(_network, static_cast<int>(nodeId));
-    if (!n.isValid())
-      continue;
-    double freq = _engine.getNodeFrequency(nodeId);
-    double old = static_cast<double>(n.getProperty(NetworkState::Props::freq));
-    if (freq != old)
-      n.setProperty(NetworkState::Props::freq, freq, nullptr);
-  }
+  // Deliberately no frequency writeback. The tree stores canonical root Hz /
+  // child multiples; engine frequencies are derived and may be host-tempo
+  // dependent. Writing them here corrupts the tree while the editor is open.
 }
 
 double NetworkController::getNodeIntensity(int nodeId) const {
@@ -1007,7 +1037,7 @@ void NetworkController::setNodeParameterDefaults(juce::ValueTree node) {
   node.setProperty(NetworkState::Props::phaseOffset, 0.0, nullptr);
   node.setProperty(NetworkState::Props::synchMode, 0, nullptr);  // free
   node.setProperty(NetworkState::Props::quantGrid, 0, nullptr);  // unQuantised
-  node.setProperty(NetworkState::Props::quantMultiple, 1.0, nullptr);
+  node.setProperty(NetworkState::Props::quantMultiple, 8.0, nullptr);
   node.setProperty(NetworkState::Props::quantOffset, 0.0, nullptr);
   node.setProperty(NetworkState::Props::quantAmount, 1.0, nullptr);
   node.setProperty(NetworkState::Props::gridFollowHost, true, nullptr);
@@ -1018,6 +1048,37 @@ void NetworkController::setNodeParameterDefaults(juce::ValueTree node) {
   node.setProperty(NetworkState::Props::midiNote, _config.midiTriggerNote + id,
                    nullptr);
   node.setProperty(NetworkState::Props::muted, false, nullptr);
+}
+
+void NetworkController::applyNodeQuantiserToEngine(int nodeId) {
+  if (nodeId == NetworkState::kRootNodeId)
+    return;
+  juce::ValueTree node = NetworkState::getNode(_network, nodeId);
+  if (!node.isValid())
+    return;
+  _engine.setNodeQuantiser_Grid(
+      static_cast<unsigned>(nodeId),
+      static_cast<MatsuokaEngine::gridType>(
+          static_cast<int>(node.getProperty(NetworkState::Props::quantGrid))));
+  _engine.setNodeQuantiser_Multiple(
+      static_cast<unsigned>(nodeId),
+      static_cast<float>(node.getProperty(NetworkState::Props::quantMultiple)));
+  _engine.setNodeQuantiser_Offset(
+      static_cast<unsigned>(nodeId),
+      static_cast<float>(node.getProperty(NetworkState::Props::quantOffset)));
+  _engine.setQuantiseAmount(
+      static_cast<unsigned>(nodeId),
+      static_cast<float>(node.getProperty(NetworkState::Props::quantAmount)));
+}
+
+void NetworkController::resetNodeQuantiserToDefaults(int nodeId) {
+  if (nodeId == NetworkState::kRootNodeId)
+    return;
+  _engine.setNodeQuantiser_Grid(static_cast<unsigned>(nodeId),
+                                MatsuokaEngine::gridType::unQuantised);
+  _engine.setNodeQuantiser_Multiple(static_cast<unsigned>(nodeId), 8.0f);
+  _engine.setNodeQuantiser_Offset(static_cast<unsigned>(nodeId), 0.0f);
+  _engine.setQuantiseAmount(static_cast<unsigned>(nodeId), 1.0f);
 }
 
 void NetworkController::publishMixerSnapshot() {

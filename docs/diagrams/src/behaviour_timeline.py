@@ -232,7 +232,7 @@ def event_trigger_timing() -> None:
         arrowprops=dict(arrowstyle="->", color=LEGACY_ROOT, lw=1.0),
     )
     ax.annotate(
-        "Current: first peak\nfireOnPeak = true  →  amplitude velocity",
+        "Current default: first peak\nFire on Peak = on  →  amplitude velocity",
         xy=(peak, 1.0),
         xytext=(peak + 0.10, 0.72),
         ha="left",
@@ -270,7 +270,7 @@ def event_trigger_timing() -> None:
     ax.text(
         1.54,
         -0.92,
-        "Host-synced current mode forces the root at the bar; this difference is mainly audible in the free path.",
+        "Host-synced current mode forces the root at the bar; this difference is mainly audible in the free path. The Fire on Peak switch selects either mode.",
         ha="right",
         va="bottom",
         fontsize=8,

@@ -8,7 +8,7 @@ digraph CurrentArchitecture {
     nodesep=0.35,
     ranksep=0.55,
     newrank=true,
-    label="Current Neurythmic VST architecture\nJUCE plugin + CPGLib (Phase 10)",
+    label="Current Neurythmic VST architecture\nJUCE plugin + CPGLib (Phase 11)",
     labelloc=t,
     fontsize=17
   ];
@@ -64,7 +64,7 @@ digraph CurrentArchitecture {
       color="#D32F2F"
     ];
     engine [
-      label="MatsuokaEngine\nCPG network\nfireOnPeak = true\n(amplitude velocity)"
+      label="MatsuokaEngine\nCPG network\nfireOnPeak switch\n(peak / zero crossing)"
     ];
     quant [
       label="QuantisedEventQueue\n24 / 32 grid, multiple, offset\nfreedom = 1 − amount\nlook-ahead = beat BPM"
@@ -103,11 +103,11 @@ digraph CurrentArchitecture {
   bug [
     shape=note,
     style="filled",
-    fillcolor="#FFEBEE",
-    color="#D32F2F",
-    fontcolor="#B71C1C",
+    fillcolor="#E8F5E9",
+    color="#2E7D32",
+    fontcolor="#1B5E20",
     fontsize=9,
-    label="Known bug (must fix)\nupdateFromEngine() writes\nthe engine's absolute Hz into\nProps::freq, which is now the\ncanonical child multiple."
+    label="Phase 11: canonical state\nupdateFromEngine() only drains\nevents; engine Hz is never\nwritten into Props::freq.\nPreset = network + APVTS."
   ];
 
   note [
@@ -131,7 +131,7 @@ digraph CurrentArchitecture {
   proc -> quant [label="grid seed\nppq / beatsPerBar", style=dashed, constraint=false];
   ctrl -> engine [label="queued changes", color="#2E7D32", fontcolor="#2E7D32", constraint=false];
   ctrl -> editor [dir=both, label="user edits / events", constraint=false];
-  ctrl -> bug [style=dotted, arrowhead=none, color="#D32F2F", constraint=false];
+  ctrl -> bug [style=dotted, arrowhead=none, color="#2E7D32", constraint=false];
   engine -> quant [label="node events"];
   quant -> midi [label="getNote()"];
   quant -> visuals [style=dotted, color="#6A1B9A"];

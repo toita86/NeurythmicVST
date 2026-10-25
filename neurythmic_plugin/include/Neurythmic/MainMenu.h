@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -36,6 +37,7 @@ private:
 
   NetworkController& _controller;
   PresetManager& _presets;
+  PluginProcessor& _processor;
   int _tab = 0;
 
   juce::TextButton _tabCpg{"CPG"};
@@ -46,6 +48,9 @@ private:
   juce::TextButton _newPreset{"NEW Preset"};
   juce::TextButton _savePreset{"Save Preset File"};
   juce::TextButton _loadPreset{"Load Preset File"};
+  juce::ToggleButton _fireOnPeak{"Fire on Peak"};
+  std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>
+      _fireOnPeakAttachment;
   juce::Label _version;
 
   // Mixer tab

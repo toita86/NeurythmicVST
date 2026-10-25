@@ -15,7 +15,7 @@ MatsuokaEngine::MatsuokaEngine(unsigned sampleRate,
   _sampleRate = sampleRate;
   _eventOnRise = eventOnRise;
   _eventOnFall = eventOnFall;
-  _fireOnPeak = fireOnPeak;
+  _fireOnPeak.store(fireOnPeak);
   _compCalcState = CompensationCalcState::IDLE;
   _fcc_sampleCount = 0u;
   _fcc_cycleCount = 0u;
@@ -32,7 +32,7 @@ MatsuokaEngine::MatsuokaEngine(const MatsuokaEngine& rhs)
   _sampleRate = rhs._sampleRate;
   _eventOnRise = rhs._eventOnRise;
   _eventOnFall = rhs._eventOnFall;
-  _fireOnPeak = rhs._fireOnPeak;
+  _fireOnPeak.store(rhs._fireOnPeak.load());
   _compCalcState = CompensationCalcState::IDLE;
   _fcc_sampleCount = 0u;
   _fcc_cycleCount = 0u;
@@ -65,6 +65,19 @@ unsigned MatsuokaEngine::getSampleRate() const {
 
 double MatsuokaEngine::getNodeFrequency(unsigned nodeID) const {
   return getNode(nodeID).getFrequency(_sampleRate);
+}
+
+void MatsuokaEngine::setFireOnPeak(bool fireOnPeak) {
+  _fireOnPeak.store(fireOnPeak);
+}
+
+bool MatsuokaEngine::getFireOnPeak() const {
+  return _fireOnPeak.load();
+}
+
+size_t MatsuokaEngine::getPendingEventCount() {
+  std::lock_guard<std::mutex> lock(_output_mutex);
+  return _outputs.size();
 }
 
 unsigned MatsuokaEngine::getNodeParent(unsigned nodeID) const {
@@ -597,6 +610,7 @@ void MatsuokaEngine::fillOutputs() {
 
   const bool forcedRoot = _forceRootEvent;
   _forceRootEvent = false;
+  const bool fireOnPeak = _fireOnPeak.load();
 
   const std::vector<unsigned>& IDs = _cpg.getNodeList();
   std::vector<unsigned>::const_iterator iter = IDs.begin();
@@ -622,25 +636,25 @@ void MatsuokaEngine::fillOutputs() {
       }
     }
 
-    if (_fireOnPeak &&
+    if (fireOnPeak &&
         (_eventOnRise && thisNode.getSignalState() == signalState::firstPeak)) {
       outputEvent e = {thisNode.getIdentifier(), abs(thisNode.getLastMaxima())};
       _quantiser.addEvent(e);
       synchroniseChildren(thisNode.getChildIDs());
 
-    } else if (_fireOnPeak && (_eventOnFall && thisNode.getSignalState() ==
-                                                   signalState::firstTrough)) {
+    } else if (fireOnPeak && (_eventOnFall && thisNode.getSignalState() ==
+                                                  signalState::firstTrough)) {
       outputEvent e = {thisNode.getIdentifier(), thisNode.getLastMinima()};
       _quantiser.addEvent(e);
       // TODO - not synchronising on fall,  - revisit
 
-    } else if (!_fireOnPeak && (_eventOnRise && thisNode.getSignalState() ==
-                                                    signalState::zeroXup)) {
+    } else if (!fireOnPeak && (_eventOnRise && thisNode.getSignalState() ==
+                                                   signalState::zeroXup)) {
       outputEvent e = {thisNode.getIdentifier(), 1.0};
       _quantiser.addEvent(e);
       synchroniseChildren(thisNode.getChildIDs());
-    } else if (!_fireOnPeak && (_eventOnFall && thisNode.getSignalState() ==
-                                                    signalState::zeroXdown)) {
+    } else if (!fireOnPeak && (_eventOnFall && thisNode.getSignalState() ==
+                                                   signalState::zeroXdown)) {
       outputEvent e = {thisNode.getIdentifier(), -1.0};
       _quantiser.addEvent(e);
       synchroniseChildren(thisNode.getChildIDs());

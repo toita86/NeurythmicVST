@@ -971,6 +971,135 @@ accurately, without per-sample driving.
 
 ---
 
+## Phase 11 — Canonical State Integrity & Correctness
+
+**Goal:** make the ValueTree the unambiguous source of truth for frequency and
+quantiser state, make the engine and UI agree, restore complete preset
+round-trips, make oscillator frequency accurate at the host sample rate, and
+expose the legacy/current trigger-point choice as a menu switch.
+
+This phase deliberately keeps the Phase 10 root-bar model. The audit confirmed
+that the legacy Max external already stored child frequencies as multiples of
+the root (`_freqs[node]`) and derived `root * multiple`; the current canonical
+multiple is therefore faithful to the legacy **audio engine**. The remaining
+problems are state plumbing, calibration, and defaults.
+
+### 11.1 Decisions
+
+- **Root semantics:** root `NetworkState::Props::freq` is the canonical
+  **standalone root** in Hz. Host mode derives the effective bar rate per block
+  and publishes it only through `_displayRootFreq`. Engine-derived frequencies
+  are never written back into the tree.
+- **Single phase:** all correctness fixes, the trigger switch, and the default
+  alignment are handled in Phase 11; there is no separate Phase 12.
+- **`fireOnPeak`:** becomes a global APVTS switch in the main menu. On = first
+  peak (current amplitude-velocity behaviour); off = legacy positive
+  zero-crossing timing.
+- **`gridFollowHost`:** remains `true` by default; new child nodes follow the
+  host metre.
+- **`quantMultiple`:** default becomes `8`, matching the legacy spawn value and
+  the `QuantisedEventQueue` child-slot default. The tree, engine, APVTS and UI
+  must all report the same value.
+
+### 11.2 Problem definition
+
+| ID | Severity | Problem | Evidence |
+|----|----------|---------|----------|
+| S1 | P0 | `updateFromEngine()` writes absolute engine Hz into child `Props::freq`, which is a canonical multiple, and overwrites the root's canonical value with the host-derived rate. | `NetworkController.cpp:936-946`; editor runs it at 30 Hz while playing. |
+| S2 | P0 | Tree and engine start with different quantiser defaults; new children are not pushed from tree to engine; deleted/recreated IDs inherit stale settings. | Tree: unQuantised/1 (`NetworkState.cpp:28-35`). Engine: 32nd/8 (`QuantisedEventQueue.cpp:15-19`). `createChild()` does not set engine quantiser values. |
+| S3 | P1 | Preset round-trip saves only the network tree; APVTS root/master/trigger parameters are not restored. | `PluginProcessor.cpp:355-382`. `rootFreq`, `masterVolume`, `masterQuantAmount`, `velocityMode`, `routingMode` live only in APVTS. |
+| S4 | P1 | Frequency compensation is calibrated once at 44.1 kHz and not recalculated when `prepareToPlay()` changes the host rate. | Constructor calls `calibrate()` at 44100; `prepareToPlay()` only calls `setSampleRate()`; `_setSampleRate()` does not recalibrate. |
+| S5 | P1 | Visual event backlog grows without a consumer; standalone visuals are dead. | `_outputs` is cleared only by `getEvents()`. `PluginEditor.cpp:48-50` calls `updateFromEngine()` only while `isPlaying()`; closed editor or standalone never drains it. |
+| S6 | P2 | New child nodes display tree quantiser values that differ from the engine values. | Same as S2; the UI reads the tree while the audio engine reads the 32nd/8 defaults. |
+
+### 11.3 Invariants
+
+1. Root `Props::freq` = canonical standalone root Hz; `_displayRootFreq` =
+   effective host/standalone rate for the UI.
+2. Child `Props::freq` = canonical multiple; engine absolute = effective root ×
+   multiple.
+3. No engine-derived frequency is written back into `Props::freq`.
+4. After `createChild()`, `createNode()`, `deleteNode()`, `clear()`, and
+   `rebuild()`, tree and engine quantiser grid/multiple/offset/amount agree.
+5. A preset round-trip restores the network, root, master controls, and trigger
+   mode.
+6. The engine's actual root frequency is accurate at 44.1, 48, and 96 kHz.
+7. Message-thread servicing drains visual events regardless of editor visibility
+   or transport state.
+
+### 11.4 Implementation
+
+- Remove the frequency writeback from `NetworkController::updateFromEngine()`;
+  keep event/envelope consumption only.
+- Add a canonical root accessor to `NetworkController`; keep `clear()` and
+  `rebuild()` independent of the engine's current host-derived root.
+- Push tree quantiser defaults to the engine on node creation; reset the
+  quantiser slot on delete; align `NetworkState`/`UI` defaults on multiple 8.
+- Serialize the APVTS state alongside the network tree, with backward-compatible
+  loading of the old single-`Network` XML shape.
+- Recalibrate in `prepareToPlay()` when the host sample rate changes; reset the
+  transient root/delay/applied-root caches.
+- Move visual-event draining to a processor message-thread service tick at
+  30 Hz; remove the editor's `isPlaying()` gate and its direct
+  `updateFromEngine()` call.
+- Add `MatsuokaEngine::setFireOnPeak()`/`getFireOnPeak()` and a global APVTS
+  `fireOnPeak` parameter plus a main-menu toggle.
+- Add an engine pending-event count/test seam for the backlog regression.
+
+### 11.5 Testing
+
+- `StateIntegrityTest`:
+  - `UpdateFromEngine.PreservesChildMultiples`
+  - `UpdateFromEngine.PreservesCanonicalRoot`
+  - `QuantiserState.NewChildMatchesTree`
+  - `QuantiserState.DefaultMultipleIsEight`
+  - `QuantiserState.RecreatedNodeUsesDefaults`
+  - `PresetState.RoundTripsRootMasterAndTrigger`
+  - `VisualEvents.MessageThreadDrainsWithoutEditor`
+- `CalibrationTest`:
+  - measured root frequency after 44.1 → 48 kHz and 44.1 → 96 kHz changes
+  - a native 48 kHz calibration comparison
+- `TriggerModeTest`:
+  - APVTS `fireOnPeak` reaches the engine
+  - preset round-trip preserves the switch
+- Update existing tests for the new default multiple and wrapper state format.
+
+### 11.6 Acceptance
+
+- New tests fail before the fixes and pass afterwards.
+- Existing + new tests pass at 44.1, 48, and 96 kHz.
+- Dev and release builds succeed; clang-format clean.
+- No code path writes engine Hz into `Props::freq`.
+- A preset round-trip restores network, root, master controls, and trigger mode.
+- New child nodes have identical tree/engine quantiser state.
+- Standalone/editor-closed playback does not grow the visual event backlog.
+- Autoethnographic note written from the template.
+
+### 11.7 Status
+
+**Implemented.** The canonical-state, quantiser-default, preset-state,
+sample-rate, visual-backlog, and trigger-switch changes are in place.
+
+- `NetworkController::updateFromEngine()` now only consumes events/envelopes;
+  root `Props::freq` is the standalone root, and the effective host rate is
+  display-only.
+- New nodes receive the tree quantiser defaults in the engine; deletion resets
+  the slot. The default quantiser multiple is 8; new nodes start unQuantised
+  and immediately adopt the known host grid when `gridFollowHost` is true.
+- Host and `.nprs` presets save/restore the network plus the APVTS (root,
+  master controls, trigger mode); old single-`Network` XML still loads.
+- `prepareToPlay()` recalibrates on host-rate changes and resets the applied
+  root/delay caches. Measured root error at 44.1/48/96 kHz is below 0.005 Hz.
+- The processor's 30 Hz message-thread service drains visual events even with
+  the editor closed and when standalone `isPlaying()` is false.
+- `MatsuokaEngine::setFireOnPeak()` is wired to the APVTS `fireOnPeak` switch
+  in the main menu (on = first peak/default, off = legacy zero crossing).
+- Tests: **217/217** pass (193 plugin + 24 CPGLib); new
+  `StateIntegrityTest.cpp` and `CalibrationTest.cpp`. Dev and release builds
+  succeed; clang-format clean.
+
+---
+
 ## Maybes (Deferred / Future Versions)
 
 | Feature | Priority | Notes |

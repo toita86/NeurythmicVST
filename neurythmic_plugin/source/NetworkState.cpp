@@ -30,7 +30,7 @@ juce::ValueTree createNode(juce::ValueTree root,
   node.setProperty(Props::noise, 0.0, nullptr);
   node.setProperty(Props::synchMode, 0, nullptr);
   node.setProperty(Props::quantGrid, 0, nullptr);
-  node.setProperty(Props::quantMultiple, 1, nullptr);
+  node.setProperty(Props::quantMultiple, 8, nullptr);
   node.setProperty(Props::quantOffset, 0, nullptr);
   node.setProperty(Props::quantAmount, 1.0f, nullptr);
   node.setProperty(Props::volume, 1.0f, nullptr);
