@@ -3,13 +3,20 @@
 #include <functional>
 #include <memory>
 
+#include "../include/Neurythmic/PluginProcessor.h"
+
 namespace neurythmic {
-PresetManager::PresetManager(NetworkController& controller)
-    : _controller(controller) {}
+PresetManager::PresetManager(NetworkController& controller,
+                             PluginProcessor* processor)
+    : _controller(controller), _processor(processor) {}
 
 bool PresetManager::savePreset(const juce::File& file) {
-  // juce::ValueTree is basically a xml
-  auto xml = _controller.getTree().createXml();
+  // Full plugin state when the processor is available (network + APVTS), so
+  // root/master/trigger controls survive a .nprs round-trip. The
+  // controller-only fallback keeps headless tests and embedders working.
+  auto state = _processor ? _processor->createStateTree()
+                          : _controller.getTree().createCopy();
+  auto xml = state.createXml();
   if (xml == nullptr)
     return false;
   return xml->writeTo(file);
@@ -23,7 +30,10 @@ bool PresetManager::loadPreset(const juce::File& file) {
   juce::ValueTree tree = juce::ValueTree::fromXml(*xml);
   if (!tree.isValid())
     return false;
-  _controller.rebuild(tree);
+  if (_processor)
+    _processor->restoreStateTree(tree);
+  else
+    _controller.rebuild(tree);
   return true;
 }
 

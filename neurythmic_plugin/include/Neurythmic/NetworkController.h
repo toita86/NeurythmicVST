@@ -77,6 +77,11 @@ public:
   // otherwise add with the default input-edge scale factor.
   void toggleConnection(int from, int to);
 
+  // Canonical standalone root frequency (Hz). Host mode derives its own
+  // effective bar rate and publishes it through PluginProcessor::getRootFreq().
+  void setRootFrequency(double freq);
+  double getRootFrequency() const;
+
   // Node parameter control (Phase 5 menus; ValueTree first, engine second)
   void setNodeFrequency(int nodeId, double freq, bool inherit);
   // Canonical tempo-independent form: a child's multiple of the root frequency.
@@ -214,6 +219,7 @@ private:
   MixerSnapshot _mixerSnapshot;
   std::set<int> _soloedNodes;
   std::function<void()> _onNetworkChanged;
+  double _canonicalRootFreq = 2.0;
 
   // Last host-derived grid, applied immediately when a node opts in.
   MatsuokaEngine::gridType _lastHostGrid = MatsuokaEngine::gridType::_32nd;
@@ -224,6 +230,8 @@ private:
   void setNodePosition(int nodeId, juce::Point<float> pos);
   void recomputeConnectionWeight(int from, int to);
   void setNodeParameterDefaults(juce::ValueTree node);
+  void applyNodeQuantiserToEngine(int nodeId);
+  void resetNodeQuantiserToDefaults(int nodeId);
   void publishMixerSnapshot();
   void notifyNetworkChanged();
 

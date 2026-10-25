@@ -49,6 +49,8 @@ JUCE plugin + CPGLib implementation.
   owns resync-on-seek, meter-change re-seeding, root updates, hard bar sync and
   per-sample engine stepping.
 - The root is the **bar**: `root = bpm / (60 × beatsPerBar)`.
+- Root `Props::freq` stores the canonical **standalone** root; the effective
+  host rate is published through `_displayRootFreq` and never written back.
 - A child stores a **canonical multiple** in `Props::freq`; the engine receives
   `root × multiple`. Tempo changes scale the root with `inherit = true`, so the
   multiples stay valid.
@@ -57,9 +59,11 @@ JUCE plugin + CPGLib implementation.
   the legacy root-driven `syncToBarStart()` path remains.
 - The message thread owns the ValueTree/APVTS/editor and pushes queued actions
   to the audio thread.
-- **Known bug:** `updateFromEngine()` currently writes the engine's absolute Hz
-  back into `Props::freq`, which is now the canonical child multiple. This must
-  be fixed before the model is consistent.
+- **Phase 11 fix:** `updateFromEngine()` no longer writes engine Hz back into
+  the tree. Root `Props::freq` is the canonical standalone root; the effective
+  host rate is published through `_displayRootFreq`. New children receive the
+  same quantiser defaults in the tree and the engine, and the default
+  quantiser multiple is 8.
 
 ## 3. Behaviour at a glance
 
@@ -130,8 +134,9 @@ This is the main engine-use difference in the **free/unquantised** path:
 
 - Legacy Max external: `fireOnPeak = false` → trigger at the positive zero
   crossing, with a fixed trigger amplitude.
-- Current plugin: `fireOnPeak = true` → trigger at the first peak, using the
-  peak amplitude as MIDI velocity.
+- Current plugin: a **Fire on Peak** switch in the main menu selects between
+  first-peak triggering (on; peak amplitude as MIDI velocity) and legacy
+  positive-zero-crossing triggering (off; fixed velocity).
 - In host-synced mode the root is forced at the bar, so this difference is
   mostly audible when quantisation is off or the freedom amount is high.
 
@@ -147,11 +152,12 @@ This is the main engine-use difference in the **free/unquantised** path:
 | Host PPQ seeding + hard bar sync | Deliberate host integration; standalone keeps root sync |
 | Child frequency model (root-relative multiple) | Faithful to the legacy Max external (`_freqs[node]`); v2 presets store the engine-native multiple |
 | Legacy frontend absolute presets | Different; v2 multiples are tempo-independent |
-| Event trigger point (`zeroXup` → `firstPeak`) | Different; affects the free path |
-| Default `gridFollowHost = true` | Different; the free path is opt-in |
-| Default `quantMultiple = 1` | Different from the legacy spawn value of 8 |
-| `updateFromEngine()` frequency writeback | **Bug; must fix** |
-| Sample-rate calibration | Constructed/calibrated at 44.1 kHz; needs recalibration at the host rate |
+| Event trigger point | Selectable in the menu: first peak (default) or legacy positive zero crossing |
+| Default `gridFollowHost = true` | Host-first; the free path is available by opting out |
+| Default `quantMultiple = 8` | Aligned with the legacy spawn value and the engine child-slot default |
+| `updateFromEngine()` frequency writeback | Fixed in Phase 11; no engine Hz is written into canonical state |
+| Preset state | Network + APVTS are saved together; root/master/trigger survive a round-trip |
+| Sample-rate calibration | Recalibrates when `prepareToPlay()` changes the host rate |
 
 ## 8. Diagram sources
 

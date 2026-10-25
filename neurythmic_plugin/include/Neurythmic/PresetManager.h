@@ -10,12 +10,15 @@
 
 namespace neurythmic {
 
+class PluginProcessor;
+
 // Serialises the network ValueTree to/from a single .nprs XML file. The tree
 // IS XML internally, so save/load are cheap; the heavy lifting (engine rebuild)
 // lives in NetworkController::rebuild().
 class PresetManager {
 public:
-  explicit PresetManager(NetworkController& controller);
+  explicit PresetManager(NetworkController& controller,
+                         PluginProcessor* processor = nullptr);
 
   bool savePreset(const juce::File& file);
   bool loadPreset(const juce::File& file);
@@ -27,6 +30,7 @@ public:
 
 private:
   NetworkController& _controller;
+  PluginProcessor* _processor = nullptr;
 
   // Kept alive for the duration of the async dialog — JUCE's FileChooser must
   // outlive launchAsync() or the dialog is destroyed before it appears.

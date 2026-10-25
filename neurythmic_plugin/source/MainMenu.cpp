@@ -13,6 +13,7 @@ MainMenu::MainMenu(NetworkController& controller,
                    PluginProcessor& processor)
     : _controller(controller),
       _presets(presets),
+      _processor(processor),
       _mixer(controller, processor) {
   addAndMakeVisible(_tabCpg);
   addAndMakeVisible(_tabMixer);
@@ -20,6 +21,7 @@ MainMenu::MainMenu(NetworkController& controller,
   addAndMakeVisible(_newPreset);
   addAndMakeVisible(_savePreset);
   addAndMakeVisible(_loadPreset);
+  addAndMakeVisible(_fireOnPeak);
   addAndMakeVisible(_mixer);
   addAndMakeVisible(_version);
 
@@ -36,6 +38,15 @@ MainMenu::MainMenu(NetworkController& controller,
   _newPreset.onClick = [this] { _controller.clear(); };
   _savePreset.onClick = [this] { _presets.browseForSave(); };
   _loadPreset.onClick = [this] { _presets.browseForLoad(); };
+
+  _fireOnPeak.setColour(juce::ToggleButton::textColourId,
+                        MenuTheme::labelColour);
+  _fireOnPeak.setTooltip(
+      "On: trigger at the first peak (amplitude velocity). Off: legacy "
+      "positive zero crossing (fixed velocity).");
+  _fireOnPeakAttachment =
+      std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+          _processor.getAPVTS(), "fireOnPeak", _fireOnPeak);
   _tabClose.onClick = [this] {
     if (onClose)
       onClose();
@@ -64,6 +75,7 @@ void MainMenu::setTab(int tab) {
   _newPreset.setVisible(cpg);
   _savePreset.setVisible(cpg);
   _loadPreset.setVisible(cpg);
+  _fireOnPeak.setVisible(cpg);
   _version.setVisible(cpg);
   _mixer.setVisible(!cpg);
   resized();
@@ -91,6 +103,8 @@ void MainMenu::resized() {
     _savePreset.setBounds(area.removeFromTop(28));
     area.removeFromTop(6);
     _loadPreset.setBounds(area.removeFromTop(28));
+    area.removeFromTop(10);
+    _fireOnPeak.setBounds(area.removeFromTop(24));
   } else {
     _mixer.setBounds(area);
   }

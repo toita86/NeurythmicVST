@@ -5,7 +5,7 @@ PluginEditor::PluginEditor(PluginProcessor& p)
     : AudioProcessorEditor(p),
       _processor(p),
       _networkView(_processor.getController()),
-      _presets(_processor.getController()),
+      _presets(_processor.getController(), &_processor),
       _mainMenu(_processor.getController(), _presets, _processor) {
   addAndMakeVisible(_networkView);
   addAndMakeVisible(_mainMenu);
@@ -46,11 +46,9 @@ void PluginEditor::resized() {
 }
 
 void PluginEditor::timerCallback() {
-  if (_processor.isPlaying())
-    _processor.getController().updateFromEngine();
-
-  // Always refresh the view so it renders (and re-renders) regardless of
-  // transport state. The view rebuilds its scene and triggers a repaint.
+  // Visual event draining and host-grid application live in the processor's
+  // message-thread timer, so they keep working with the editor closed (and in
+  // standalone, where isPlaying() is false). The editor only renders.
   _networkView.update();
   if (_mainMenu.isVisible())
     _mainMenu.refresh();

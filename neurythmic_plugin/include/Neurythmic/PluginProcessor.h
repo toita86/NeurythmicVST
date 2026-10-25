@@ -46,6 +46,11 @@ public:
   void getStateInformation(juce::MemoryBlock& destData) override;
   void setStateInformation(const void* data, int sizeInBytes) override;
 
+  // Full plugin state as a ValueTree (network + APVTS). Used by both the host
+  // state callbacks and the .nprs preset manager.
+  juce::ValueTree createStateTree();
+  void restoreStateTree(const juce::ValueTree& state);
+
   // Phase 2 API
   juce::AudioProcessorValueTreeState& getAPVTS() { return _apvts; }
   void setTempoSource(TempoSource* source);  // test seam
@@ -59,6 +64,10 @@ public:
   // thread (processor timer); safe to call headlessly.
   void applyHostGrid();
 
+  // Message-thread servicing: host-grid application + visual event draining.
+  // Called by the 30 Hz processor timer and exposed for headless tests.
+  void serviceMessageThread();
+
   // Phase 9: number of transport resyncs (start/seek with a new ppq).
   int getTransportResyncCount() const;
 
@@ -67,6 +76,7 @@ public:
   double getRootFreq() const;  // effective root freq used by the engine (Hz)
   double getBpm() const;       // effective tempo shown in the mixer (BPM)
   NetworkController& getController() { return _controller; }
+  MatsuokaEngine& getEngine() { return _engine; }
   const MatsuokaEngine& getEngine() const { return _engine; }
 
 private:
@@ -82,6 +92,7 @@ private:
                         float newValue) override;
   void syncAllNodeParams();
   void syncNodeParams(int nodeId);
+  void syncGlobalParams();
 
   MatsuokaEngine _engine;
   NetworkController _controller;  // MUST be declared after engine
@@ -110,6 +121,7 @@ private:
 
   // Phase 10: root bar model, tempo-relative child frequencies, hard bar sync.
   float _lastAppliedRootFreq = -1.0f;
+  double _lastCalibratedSampleRate = 44100.0;
   int _lastTimeSigNumerator = 0;
   int _lastTimeSigDenominator = 0;
   bool _rootZeroStateCaptured = false;

@@ -11,6 +11,7 @@
  *   on calling doQueuedActions(). If queued this is commented
  */
 
+#include <atomic>
 #include <mutex>
 #include <vector>
 #include <queue>
@@ -64,6 +65,15 @@ public:
 
   /// returns sample rate of the system
   unsigned getSampleRate() const;
+
+  /// Selects the event trigger point. true = first peak (amplitude velocity),
+  /// false = legacy positive zero crossing (fixed velocity).
+  void setFireOnPeak(bool fireOnPeak);
+  bool getFireOnPeak() const;
+
+  /// Number of visual events waiting to be consumed by getEvents(). Diagnostic
+  /// test seam; call from the message thread.
+  size_t getPendingEventCount();
 
   /// turns on or off the contextual scaling of connection weights based on
   /// the ratio of frequencies of the nodes connected (the entrainment
@@ -370,7 +380,8 @@ private:
   QuantisedEventQueue _quantiser;
   float _quantiserTempoOverride = 0.0f;  // bars/min; 0 = automatic
   unsigned _sampleRate;
-  bool _eventOnRise, _eventOnFall, _fireOnPeak;
+  bool _eventOnRise, _eventOnFall;
+  std::atomic<bool> _fireOnPeak{false};
   bool _shutdown, _idle, _paused;
   bool _forceRootEvent = false;
   bool _suppressNaturalRootEvents = false;
