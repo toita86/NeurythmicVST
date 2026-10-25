@@ -1,14 +1,27 @@
 #include "../include/Neurythmic/TempoSource.h"
 
+#include <cstdlib>
+
 namespace neurythmic {
 
 MatsuokaEngine::gridType mapTimeSignatureToGrid(int numerator,
                                                 int denominator) {
-  juce::ignoreUnused(numerator);
-  if (denominator == 8)
-    return MatsuokaEngine::gridType::_24th;
-  // Default: x/4 (and anything unrecognised) uses the 32nd grid.
-  return MatsuokaEngine::gridType::_32nd;
+  if (numerator <= 0 || denominator <= 0)
+    return MatsuokaEngine::gridType::_32nd;
+
+  // Number of 32nd-note steps in one bar: numerator * 32 / denominator.
+  const int steps = (numerator * 32) / denominator;
+  const int distance24 = std::abs(steps - 24);
+  const int distance32 = std::abs(steps - 32);
+  return distance32 <= distance24 ? MatsuokaEngine::gridType::_32nd
+                                  : MatsuokaEngine::gridType::_24th;
+}
+
+double beatsPerBarForSignature(int numerator, int denominator) {
+  if (numerator <= 0 || denominator <= 0)
+    return 4.0;
+  return (static_cast<double>(numerator) * 4.0) /
+         static_cast<double>(denominator);
 }
 
 bool isPositionJump(double previousPpq,

@@ -79,6 +79,8 @@ public:
 
   // Node parameter control (Phase 5 menus; ValueTree first, engine second)
   void setNodeFrequency(int nodeId, double freq, bool inherit);
+  // Canonical tempo-independent form: a child's multiple of the root frequency.
+  void setNodeFrequencyMultiple(int nodeId, double multiple);
   void setNodeSelfNoise(int nodeId, double amount);
   double getNodeSelfNoise(int nodeId) const;
   void setNodePhaseOffset(int nodeId, double phase);
@@ -144,7 +146,13 @@ public:
   void clearNodeSelection();
   void selectConnection(int from, int to);
   bool isConnectionSelected(int from, int to) const;
+  bool getSelectedConnection(int& from, int& to) const;
   void clearSelection();
+
+  // Phase 9: deletes the selected connection (unless it is a parent edge) and
+  // every selected leaf node. Root/interior nodes are skipped. Clears the
+  // selection afterwards and returns the number of objects deleted.
+  int deleteSelection();
 
   // Drag (normalised coordinates)
   void setNodePositionOffsets(juce::Point<float> pos);
@@ -169,9 +177,10 @@ public:
   std::vector<int> getNodeIds() const;
   int getNodeCount() const;
   juce::Point<float> getNodePosition(int nodeId) const;
-  double getNodeFrequency(int nodeId) const;  // reads the tree freq property
-  int getNodeBarDivision(int nodeId) const;   // engine quantiser bar division
-  int getNodeParent(int nodeId) const;  // reads the tree parentId property
+  double getNodeFrequency(int nodeId) const;  // absolute engine frequency
+  double getNodeFrequencyMultiple(int nodeId) const;  // tree value (children)
+  int getNodeBarDivision(int nodeId) const;  // engine quantiser bar division
+  int getNodeParent(int nodeId) const;       // reads the tree parentId property
 
   // Connection enumeration for the renderer (source of truth = ValueTree).
   struct ConnectionInfo {

@@ -38,4 +38,9 @@ sudo apt install -y ninja-build ccache clang-format clang-tidy
 - `format.sh` - Format code
 - `lint.sh` - Static analysis
 
-See `docs/dev_tooling.md` for full documentation.
+## Documentation
+
+- [`docs/legacy_vs_current.md`](docs/legacy_vs_current.md) — visual comparison of the legacy and current architectures, rhythm behaviour, quantisation pipeline and frequency model
+- [`docs/roadmap.md`](docs/roadmap.md) — phased development roadmap
+- [`docs/CPGlib.md`](docs/CPGlib.md) — CPGLib structure and API
+- [`docs/dev_tooling.md`](docs/dev_tooling.md) — build, test and lint tooling

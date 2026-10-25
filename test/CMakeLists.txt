@@ -27,6 +27,9 @@ add_executable(NeurythmicTests
   source/TempoTest.cpp
   source/AutomationTest.cpp
   source/VersionTest.cpp
+  source/RhythmTest.cpp
+  source/ShortcutTest.cpp
+  source/RootBarTest.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginProcessor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/PluginEditor.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../neurythmic_plugin/source/ConfigManager.cpp

@@ -3,6 +3,7 @@
 #include <atomic>
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_events/juce_events.h>
 #include "MatsuokaEngine.h"
 #include "MidiOutput.h"
 #include "NetworkController.h"
@@ -11,6 +12,7 @@
 namespace neurythmic {
 
 class PluginProcessor : public juce::AudioProcessor,
+                        private juce::Timer,
                         private juce::AudioProcessorValueTreeState::Listener {
 public:
   PluginProcessor();
@@ -54,8 +56,11 @@ public:
   // "node_00_volume". Zero-padded so the DAW list sorts naturally.
   static juce::String nodeParamId(int nodeId, const char* field);
   // Applies the host time signature to every "follow host" node. Message
-  // thread (called from the editor timer); safe to call headlessly.
+  // thread (processor timer); safe to call headlessly.
   void applyHostGrid();
+
+  // Phase 9: number of transport resyncs (start/seek with a new ppq).
+  int getTransportResyncCount() const;
 
   // Getters exposed for the editor
   double getNodeFrequency(unsigned id) const;
@@ -70,6 +75,7 @@ private:
   static juce::AudioProcessorValueTreeState::ParameterLayout
   createParameterLayout();
   void process(juce::MidiBuffer& midiMessages, int numSamples);
+  void timerCallback() override;
 
   // Phase 7 APVTS automation facade (message thread only).
   void parameterChanged(const juce::String& parameterID,
@@ -95,6 +101,18 @@ private:
   double _lastPpq = 0.0;
   std::atomic<int> _hostTimeSigNumerator{4};
   std::atomic<int> _hostTimeSigDenominator{4};
+
+  // Phase 9 transport resync (B3a).
+  bool _hasPpqAtStop = false;
+  double _ppqAtStop = 0.0;
+  std::atomic<int> _transportResyncCount{0};
+  float _lastQuantiserDelayBpm = -1.0f;
+
+  // Phase 10: root bar model, tempo-relative child frequencies, hard bar sync.
+  float _lastAppliedRootFreq = -1.0f;
+  int _lastTimeSigNumerator = 0;
+  int _lastTimeSigDenominator = 0;
+  bool _rootZeroStateCaptured = false;
 
   // Lock-free display values for the UI (written on the audio thread).
   std::atomic<double> _displayBpm{120.0};

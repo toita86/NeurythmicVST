@@ -740,6 +740,235 @@ and the state schema may change between minor versions.
   at load time (normally present on desktop distros) — noted in `README.md`.
 - **macOS deployment target** stays `10.11` (supported by JUCE 8.0.12).
 
+## Phase 9 — Rhythm Bugs & Keyboard Shortcuts
+
+**Goal:** Make the generated rhythm deterministic with respect to the host
+timeline (fixing the drift after pause / reset-to-zero / play), correct the
+musical meaning of the quantise grid, and add the missing destructive
+shortcuts.
+
+### 9.1 Problem statement and invariant
+
+User testing showed that after the DAW pauses or returns to the start and then
+plays again, the rhythm is no longer aligned to the DAW grid. The root cause is
+that the node phases and the quantise grids are hidden free-running state:
+
+- the stop→start path is deliberately exempt from seek detection
+  (`_wasPlaying && isPlaying`), so a position reset while stopped is ignored;
+- even when a seek is detected, `MatsuokaEngine::reset()` resets the CPG nodes
+  but **not** the quantiser grids;
+- the grid is never positioned from `ppq` at transport start.
+
+Result: output depends on transport history, not on the current musical
+position. Phase 9 establishes the invariant:
+
+> For the same preset and the same ppq, the plugin emits the same events,
+> regardless of how the transport reached that position.
+
+### 9.2 A1 — Quantiser tempo is bars-per-minute, node 0 stays the beat
+
+> **Superseded by Phase 10.** The engine's `syncToBarStart()` is driven by
+> node-0 events, so a bars/min grid with a beat-rate root jumped the grid on
+> every beat. Phase 10 makes the root the bar instead.
+
+**Decision:** keep node 0 at `bpm / 60` (so the root control, frequency
+multiples, presets and displays keep their existing meaning), but give the
+quantiser its own tempo: `barsPerMin = bpm / beatsPerBar`.
+
+- At 120 BPM in 4/4 this is 30 bars/min; with the 32 grid that yields
+  16 steps/s = 32 steps per 2-second bar (as documented in `CPGLib/ReadMe.md`).
+  Previously it yielded 64 steps/s = 32 steps per beat, i.e. four times too
+  dense, making quantisation almost inaudible.
+- CPGLib gains `MatsuokaEngine::setQuantiserTempo(float barsPerMin)` plus an
+  override flag so the implicit `60 * node0Freq` update in
+  `updateQuantiserTempo()` does not overwrite it. A getter is exposed for tests.
+- **Latency guard:** `QuantisedEventQueue::setNoteDelays()` must keep deriving
+  the look-ahead from the **beat** tempo (BPM), not the grid tempo. Otherwise
+  the existing ~0.125 s look-ahead would become a quarter bar (~0.5 s at
+  120 BPM 4/4).
+
+### 9.3 B3a — PPQ alignment on start/seek, resume on a pure pause
+
+**Decision:** re-seed on position changes only; a stop→start at the same ppq
+resumes seamlessly (preserving the Phase 7 intent).
+
+- The processor remembers the ppq seen at stop. On stopped→playing, and on a
+  detected seek while rolling, it compares the current ppq with the remembered
+  one. If they differ (or a seek was detected), it:
+  1. resets the CPG nodes (all nodes, including free-running ones — required
+     for determinism given the coupled network),
+  2. clears in-flight quantiser events,
+  3. seeds the grids directly from ppq:
+     `bars = ppq / beatsPerBar`, `step = bars * divisions`,
+     `marker = floor(step)`, `phase = frac(step)`,
+     `nextBar = (floor(bars) + 1) * divisions`.
+- If the ppq is unchanged (pure pause), nothing is reset and playback continues.
+- **Performance:** the comparison is O(1) per block; reset/clear/seed is O(nodes
+  + 1024) **once per discontinuity**. The grid is positioned with a new O(1)
+  `setPosition()` — never by ticking forward, which would be O(ppq).
+- No per-sample external driving (`setDrivingInput`) is used, keeping the audio
+  path unchanged.
+- Also fix `isPositionJump`/stop tracking so a reset-to-zero while stopped is
+  handled at the next start, while small ppq jitter does not trigger resets.
+
+### 9.4 C1 — Time signature mapped by numerator and denominator
+
+**Decision:** map to the nearest of the two CPGLib grids using the number of
+32nd-note steps in a bar:
+
+- `x/4`: `x * 8` steps/bar → 3/4 = 24, 4/4 = 32.
+- `x/8`: `x * 4` steps/bar → 6/8 = 24.
+- Other values choose the nearest grid (24 or 32); ties/unknown fall back to 32.
+
+This fixes 3/4 (previously mapped to 32) and makes the C1 result consistent with
+A1's "steps per bar" definition. The processor owns a 10 Hz timer that applies
+the current grid on the message thread (so it works with the plugin window
+closed and picks up nodes created since the last tick); the controller skips
+nodes that already match, so this is a handful of comparisons, not per-sample
+work.
+
+### 9.5 Keyboard shortcuts
+
+- No keyboard handling exists today; add it at the editor/view level.
+- `Delete` / `Backspace`: delete the current selection.
+  - A selected connection is deleted unless it is the parent edge.
+  - Selected leaf nodes are deleted; the root and interior nodes are skipped
+    (matching the existing menu restrictions, which throw if called directly).
+  - After deletion the selection is cleared.
+- `Escape`: clear the selection.
+- Shortcut logic lives in `NetworkController` (e.g. `deleteSelection()`), so it
+  is unit-testable; the view only grabs keyboard focus on click and forwards
+  the key press.
+- `deleteNode()` must also erase the node from `_selectedNodes` (currently it
+  leaves a stale entry).
+
+### 9.6 Performance and "freedom" guarantees
+
+- No new work on the per-sample path (`step()` / `fillOutputs()`); resync and
+  tempo updates go through the existing queued-action mechanism and happen only
+  on transport discontinuities or BPM/meter changes, never per sample.
+- Seek handling is O(nodes + event pool) once per discontinuity; grid seeding is
+  O(1); no tick simulation.
+- The unquantised path is untouched:
+  - `grid == unQuantised` continues to bypass `getNoteCoordinate()` and uses the
+    raw coordinate;
+  - quantise amount 0 (freedom = 1) still produces zero movement;
+  - A1/C1 only affect nodes that opt into a grid;
+  - a pure pause does not reset free-running nodes.
+- The only deliberate trade-off: a seek resets free-running nodes too, because
+  partial resets would change the coupled network dynamics and break
+  determinism.
+- Existing look-ahead latency is preserved by keeping `setNoteDelays()` on the
+  beat tempo.
+
+### 9.7 Testing
+
+**Unit / integration (headless, `ctest`):**
+- `RhythmTest`:
+  - C1 mapping: 3/4 → 24, 4/4 → 32, 6/8 → 24; unsupported meters choose the
+    nearest grid.
+  - A1: `setQuantiserTempo(barsPerMin)` drives the grid at `tempo*divisions/60`
+    steps/s; setting node-0 frequency does not override an explicit quantiser
+    tempo.
+  - Seek: seeding at a bar/beat/mid-step position produces the expected marker
+    and phase; a huge ppq (e.g. bar 10,000) is O(1).
+  - Determinism through `processBlock`: start at ppq 0, capture events; loop
+    back to 0 → identical events. Stop/seek/reset→start → aligned again.
+  - Pause continuity: stop/start at the same ppq does not trigger a node
+    resync (the free-running pattern continues).
+  - Free path: with grid OFF or amount 0, the queued coordinate equals the raw
+    coordinate (no snapping), and BPM/grid changes do not force quantisation.
+- `ShortcutTest`:
+  - `deleteSelection()` deletes a selected leaf, clears selection, skips root
+    and interior nodes, deletes a selected non-parent connection, refuses the
+    parent edge, and removes deleted ids from `_selectedNodes`.
+
+---
+
+## Phase 10 — Root Bar Alignment & Tempo-Relative Frequencies
+
+**Goal:** Make the root node the musical bar (matching CPGLib's root-driven
+quantiser), make child frequencies tempo-independent multiples of the root, and
+hard-sync the root note to the host downbeat.
+
+### 10.1 C — root node is the bar
+
+**Decision:** the root oscillator runs at **bars per second** while the host is
+playing:
+
+```
+rootFreq = bpm / (60 * beatsPerBar)
+```
+
+- At 120 BPM in 4/4 this is 0.5 Hz (one bar every 2 s); at 3/4 it is 0.667 Hz.
+- `updateQuantiserTempo()` already derives `60 * rootFreq` = bars/min, so the
+  A1 override is no longer used: the 32/24 grids now genuinely have 32/24 steps
+  per bar.
+- `syncToBarStart()` (triggered by a node-0 event) then sees the root event at a
+  bar boundary and no longer jumps the grid forward. This fixes the A1
+  regression where the grid jumped 24 steps on every beat.
+- The root note is once per bar; a 2× child fires at the downbeat and mid-bar.
+
+### 10.2 Canonical frequency multiples
+
+**Decision:** `NetworkState::Props::freq` stores a child's **multiple of the
+root**, not an absolute Hz value. The root's `freq` property remains the
+effective root frequency (bars/sec) for display.
+
+- `createChild()` stores `cfg.newNodeFreqMultiple`; the engine receives
+  `currentRoot * multiple`.
+- `NodeMenu`, the graph labels and the APVTS `node_NN_freq` parameter all use
+  the multiple (the 0.25–16 range already matches the configured multiples).
+- On a root tempo change, `setNodeFrequency(0, root, inherit = true)` scales
+  every child proportionally, so the ratio is preserved.
+- `stateVersion` becomes **2**. Loading a version-1 tree (absolute child Hz)
+  migrates with `multiple = childAbs / rootAbs`; presets saved before this
+  phase are best-effort because the old tree's root frequency was not updated
+  with the host tempo. Re-saving after load stores the correct multiples.
+- Because the tree stores multiples, presets are tempo-independent.
+
+### 10.3 Hard bar sync of the root
+
+**Decision:** the root note is emitted at the host bar boundary, sample
+accurately, without per-sample driving.
+
+- CPGLib captures the root's positive-zero-crossing state once
+  (`captureRootZeroState`, O(cycle), at `prepareToPlay`).
+- At each bar boundary the processor calls `syncRootToBarNow()` at the exact
+  sample offset: node 0 is reset to the captured zero state and a **forced root
+  event** is emitted on the next `step()`. The forced event also runs the normal
+  `synchroniseChildren` logic.
+- Natural root events are suppressed while host-synced, so there is exactly one
+  root note per bar. When no host/ppq is available, natural events are allowed
+  again.
+- On a mid-bar start/seek, root events are suppressed until the next bar
+  boundary; the children keep playing on the seeded grid.
+- Cost: O(1) per bar, no per-sample work, no wavetable build.
+
+### 10.4 Meter changes and determinism
+
+- When the host signature changes while playing, re-seed the grid from
+  `ppq / beatsPerBar` (grid only, no node reset) and suppress the root until the
+  next bar so the new bar phase is respected.
+- `MatsuNode::reset()` now clears `_hasCrossedZero`, `_signalState`,
+  `_lastMaxima` and `_lastMinima`, so the first event after a reset is
+  deterministic (it previously depended on the pre-reset state).
+
+### 10.5 Testing
+
+- `RootBarTest`:
+  - `bpm / (60 * beatsPerBar)` for 4/4, 3/4 and 6/8.
+  - A child multiple is preserved across BPM changes (engine ratio stays
+    constant) and after a preset round-trip.
+  - Version-1 absolute presets migrate to multiples.
+  - The root note lands on the bar boundary for a start at bar 0 and after a
+    seek/loop; a mid-bar start emits no root note until the next bar.
+  - A meter change re-seeds the grid to the new bar phase.
+  - `MatsuNode::reset()` produces the same first-event timing regardless of the
+    pre-reset signal state.
+- Existing tests updated for the new root units (`120 BPM 4/4 → 0.5 Hz`) and
+  the multiple-based `freq` parameter.
+
 ---
 
 ## Maybes (Deferred / Future Versions)

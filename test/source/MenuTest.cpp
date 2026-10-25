@@ -26,9 +26,10 @@ TEST(Menu, SetNodeFrequencyRoundTrips) {
   NetworkController ctrl(engine, ConfigManager::get());
   ctrl.createChild(0);  // node 1
 
-  ctrl.setNodeFrequency(1, 3.5, false);
-  EXPECT_DOUBLE_EQ(engine.getNodeFrequency(1), 3.5);
-  EXPECT_DOUBLE_EQ(ctrl.getNodeFrequency(1), 3.5);
+  ctrl.setNodeFrequencyMultiple(1, 3.5);
+  EXPECT_DOUBLE_EQ(ctrl.getNodeFrequencyMultiple(1), 3.5);
+  EXPECT_NEAR(ctrl.getNodeFrequency(1), engine.getNodeFrequency(0) * 3.5,
+              1e-6);
   EXPECT_DOUBLE_EQ(
       static_cast<double>(
           NetworkState::getNode(ctrl.getTree(), 1)

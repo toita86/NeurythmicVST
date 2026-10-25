@@ -268,6 +268,28 @@ public:
   float getQuantiseAmount();
   float getQuantiseAmount(unsigned node);
 
+  /// Sets the quantiser grid tempo explicitly (bars per minute). While set, the
+  /// implicit `60 * node0Frequency` update is suppressed. Pass 0 via
+  /// clearQuantiserTempoOverride() to return to the automatic behaviour.
+  void setQuantiserTempo(float barsPerMin);
+  void clearQuantiserTempoOverride();
+  float getQuantiserTempo() const;
+
+  /// Sets the beat tempo used for the fixed note look-ahead delay. This is
+  /// separate from the grid tempo so the delay stays a constant musical length.
+  void setQuantiserNoteDelayTempo(float bpm);
+  unsigned getQuantiserNoteDelay() const;
+
+  /// Positions both quantiser grids from an absolute bar position (O(1)).
+  void seekQuantiserToBars(double bars);
+
+  /// Drops any events still waiting in the quantiser queues.
+  void clearQuantiserEvents();
+
+  /// Marker/phase of a grid (for diagnostics and tests).
+  uint64_t getQuantiserGridMarker(gridType grid) const;
+  float getQuantiserGridPhase(gridType grid) const;
+
   /// sets the number of calculation steps per second - used in internal
   /// calculations (this value must match the number of times per second you
   /// call step() )
@@ -311,6 +333,17 @@ public:
   /// otherwise behaviour is same as reset(nodeID)
   void zeroSync(unsigned nodeID);
 
+  /// Captures node 0's positive-zero-crossing state (queued; O(cycle)).
+  void captureRootZeroState();
+
+  /// Resets node 0 to the captured zero state and forces a root event on the
+  /// next step. Called between steps on the audio thread.
+  void syncRootToBarNow();
+
+  /// While host-synced, natural node-0 events are replaced by the forced bar
+  /// event so there is exactly one root note per bar.
+  void setSuppressNaturalRootEvents(bool suppress);
+
 private:
   std::mutex _actions_mutex;
   std::mutex _output_mutex;
@@ -335,9 +368,12 @@ private:
   static constexpr unsigned _fcc_cyclesPerCalc = 4;
 
   QuantisedEventQueue _quantiser;
+  float _quantiserTempoOverride = 0.0f;  // bars/min; 0 = automatic
   unsigned _sampleRate;
   bool _eventOnRise, _eventOnFall, _fireOnPeak;
   bool _shutdown, _idle, _paused;
+  bool _forceRootEvent = false;
+  bool _suppressNaturalRootEvents = false;
 
   void fillOutputs();  // called at end of step
 

@@ -22,10 +22,15 @@ struct TempoInfo {
   int timeSigDenominator = 4;
 };
 
-// Maps a host time signature to one of CPGLib's two quantise grids. The mapping
-// is by denominator: x/4 -> 32nd, x/8 -> 24th; anything else falls back to the
-// 32nd grid. `numerator` is accepted for future compound-meter handling.
+// Maps a host time signature to one of CPGLib's two quantise grids. Both the
+// numerator and denominator matter: the grids are 32nd-note steps per bar
+// (x/4 -> x*8, x/8 -> x*4), so 3/4 -> 24, 4/4 -> 32, 6/8 -> 24. Other
+// signatures choose the nearest grid; ties fall back to 32.
 MatsuokaEngine::gridType mapTimeSignatureToGrid(int numerator, int denominator);
+
+// Number of quarter-note beats in a bar for a time signature (6/8 -> 3.0).
+// Used to convert host BPM into the quantiser's bars-per-minute tempo.
+double beatsPerBarForSignature(int numerator, int denominator);
 
 // True when the transport position moved in a way that a normal block of
 // `expectedDelta` quarter notes cannot explain (a backward seek or an

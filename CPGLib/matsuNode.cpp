@@ -154,6 +154,17 @@ void MatsuNode::reset(double x1, double x2, double v1, double v2) {
   matsuParams.state.v2 = v2;
   matsuParams.out.pushSample(POSPART(matsuParams.state.x1) -
                              POSPART(matsuParams.state.x2));
+  // Prime the last two delay-line samples so the first signal-state comparison
+  // after a reset is deterministic (the pre-reset history is otherwise
+  // visible).
+  matsuParams.out.pushSample(POSPART(matsuParams.state.x1) -
+                             POSPART(matsuParams.state.x2));
+  // A reset must also clear the derived signal history; otherwise the first
+  // event after a transport reset depends on the pre-reset state.
+  _hasCrossedZero = 0;
+  _signalState = signalState::nonSignificant;
+  _lastMaxima = 0;
+  _lastMinima = 0;
 }
 
 void MatsuNode::resetChangeFlag_Params() {

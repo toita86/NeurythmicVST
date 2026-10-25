@@ -433,25 +433,43 @@ void CPG::setDriven(bool driven) {
 
 void CPG::createExternalSyncResources() {
   _wavetable.clear();
-  // move to positive zero crossing
-  while (_nodes[0].getOutput() > 0) {
-    _nodes[0].doCalcStep(true, false);
-  }
-  while (_nodes[0].getOutput() < 0) {
-    _nodes[0].doCalcStep(true, false);
-  }
-
-  // record state prior to zero crossing
-  _zeroState.x1 = _nodes[0].getInternal(MatsuNode::matsuInternal::X1);
-  _zeroState.x2 = _nodes[0].getInternal(MatsuNode::matsuInternal::X2);
-  _zeroState.v1 = _nodes[0].getInternal(MatsuNode::matsuInternal::V1);
-  _zeroState.v2 = _nodes[0].getInternal(MatsuNode::matsuInternal::V2);
+  captureRootZeroState();
 
   // record wavetable
   for (unsigned i = 0; i < _sampleRate; i++) {
     _wavetable.push_back((float)_nodes[0].getOutput(true));
     _nodes[0].doCalcStep(true, false);
   }
+}
+
+void CPG::captureRootZeroState() {
+  if (!exists(0))
+    return;
+
+  // Move to a positive zero crossing, with a generous bail-out for a stuck
+  // oscillator. O(cycle), so this is only called at prepare/tempo changes.
+  unsigned bail = _sampleRate * 8;
+  while (_nodes[0].getOutput() > 0 && bail-- > 0)
+    _nodes[0].doCalcStep(true, false);
+  while (_nodes[0].getOutput() < 0 && bail-- > 0)
+    _nodes[0].doCalcStep(true, false);
+
+  if (bail == 0)
+    return;
+
+  _zeroState.x1 = _nodes[0].getInternal(MatsuNode::matsuInternal::X1);
+  _zeroState.x2 = _nodes[0].getInternal(MatsuNode::matsuInternal::X2);
+  _zeroState.v1 = _nodes[0].getInternal(MatsuNode::matsuInternal::V1);
+  _zeroState.v2 = _nodes[0].getInternal(MatsuNode::matsuInternal::V2);
+  _hasZeroState = true;
+}
+
+void CPG::syncRootToBar() {
+  if (!_hasZeroState)
+    captureRootZeroState();
+  if (!_hasZeroState)
+    return;
+  _nodes[0].reset(_zeroState.x1, _zeroState.x2, _zeroState.v1, _zeroState.v2);
 }
 
 // TODO - split into components.

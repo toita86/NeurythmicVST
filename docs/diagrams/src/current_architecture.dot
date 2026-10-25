@@ -1,0 +1,139 @@
+digraph CurrentArchitecture {
+  graph [
+    rankdir=TB,
+    bgcolor="white",
+    fontname="Helvetica",
+    fontsize=12,
+    pad=0.35,
+    nodesep=0.35,
+    ranksep=0.55,
+    newrank=true,
+    label="Current Neurythmic VST architecture\nJUCE plugin + CPGLib (Phase 10)",
+    labelloc=t,
+    fontsize=17
+  ];
+  node [
+    shape=box,
+    style="rounded,filled",
+    fontname="Helvetica",
+    fontsize=10,
+    color="#1565C0",
+    fillcolor="#E3F2FD",
+    penwidth=1.2,
+    margin="0.12,0.08"
+  ];
+  edge [
+    fontname="Helvetica",
+    fontsize=9,
+    color="#555555",
+    arrowsize=0.7
+  ];
+
+  subgraph cluster_host {
+    label="DAW host";
+    fontsize=11;
+    color="#607D8B";
+    style="rounded,dashed";
+    bgcolor="#F5F7F8";
+
+    host [
+      label="Playhead\nBPM • PPQ • meter\nplay / stop • loop / seek",
+      fillcolor="#ECEFF1",
+      color="#607D8B"
+    ];
+  }
+
+  subgraph cluster_audio {
+    label="Audio thread";
+    fontsize=11;
+    color="#1565C0";
+    style="rounded,dashed";
+    bgcolor="#F7FBFF";
+
+    tempo [
+      label="TempoSource\nhost playhead or fallback clock",
+      fillcolor="#E1F5FE"
+    ];
+    proc [
+      label="PluginProcessor::processBlock\nB3a resync on seek / position change\nmeter-change re-seed\nroot update (bars/sec)\nhard bar sync\nper-sample engine step",
+      fillcolor="#BBDEFB"
+    ];
+    sync [
+      label="Hard bar sync\ncaptureRootZeroState()\nsyncRootToBarNow()\nforced root event",
+      fillcolor="#FFEBEE",
+      color="#D32F2F"
+    ];
+    engine [
+      label="MatsuokaEngine\nCPG network\nfireOnPeak = true\n(amplitude velocity)"
+    ];
+    quant [
+      label="QuantisedEventQueue\n24 / 32 grid, multiple, offset\nfreedom = 1 − amount\nlook-ahead = beat BPM"
+    ];
+    midi [
+      label="MidiOutput\nroot forced at the bar\nchildren quantised",
+      fillcolor="#E8F5E9",
+      color="#2E7D32"
+    ];
+    visuals [
+      label="Visual envelopes\nflash on events",
+      fillcolor="#F3E5F5",
+      color="#6A1B9A"
+    ];
+  }
+
+  subgraph cluster_message {
+    label="Message thread";
+    fontsize=11;
+    color="#2E7D32";
+    style="rounded,dashed";
+    bgcolor="#F7FBF7";
+
+    ctrl [
+      label="NetworkController\nValueTree (canonical state)\nAPVTS automation facade\npresets v2",
+      fillcolor="#E8F5E9",
+      color="#2E7D32"
+    ];
+    editor [
+      label="Editor\nNetworkView / NodeMenu\nfrequency multiples\nquantise grids / freedom",
+      fillcolor="#F1F8E9",
+      color="#2E7D32"
+    ];
+  }
+
+  bug [
+    shape=note,
+    style="filled",
+    fillcolor="#FFEBEE",
+    color="#D32F2F",
+    fontcolor="#B71C1C",
+    fontsize=9,
+    label="Known bug (must fix)\nupdateFromEngine() writes\nthe engine's absolute Hz into\nProps::freq, which is now the\ncanonical child multiple."
+  ];
+
+  note [
+    shape=note,
+    style="filled",
+    fillcolor="#FFFDE7",
+    color="#C0A000",
+    fontsize=9,
+    label="Root = bpm / (60 × beatsPerBar)\nChild = canonical multiple of root\nHost grid seeded from PPQ\nStandalone: natural root events\nare allowed again."
+  ];
+
+  { rank=same; tempo; proc; sync; }
+  { rank=same; engine; quant; midi; visuals; }
+  { rank=same; ctrl; editor; }
+
+  host -> tempo [label="playhead"];
+  tempo -> proc [label="BPM / PPQ / meter"];
+  proc -> engine [label="step() per sample"];
+  proc -> sync [label="bar boundary", color="#D32F2F", fontcolor="#D32F2F"];
+  sync -> engine [label="reset node 0\nforced root event", color="#D32F2F", fontcolor="#D32F2F"];
+  proc -> quant [label="grid seed\nppq / beatsPerBar", style=dashed, constraint=false];
+  ctrl -> engine [label="queued changes", color="#2E7D32", fontcolor="#2E7D32", constraint=false];
+  ctrl -> editor [dir=both, label="user edits / events", constraint=false];
+  ctrl -> bug [style=dotted, arrowhead=none, color="#D32F2F", constraint=false];
+  engine -> quant [label="node events"];
+  quant -> midi [label="getNote()"];
+  quant -> visuals [style=dotted, color="#6A1B9A"];
+  proc -> note [style=dotted, arrowhead=none, color="#999999", constraint=false];
+}

@@ -3,6 +3,8 @@
 #include "../include/Neurythmic/ConfigManager.h"
 #include "../include/Neurythmic/NetworkState.h"
 
+#include <cmath>
+
 namespace neurythmic {
 
 // Constructor
@@ -50,9 +52,15 @@ PluginProcessor::PluginProcessor()
     _apvts.addParameterListener(nodeParamId(id, "quantAmount"), this);
   }
   syncAllNodeParams();
+
+  // Host-grid mapping is owned by the processor (not the editor) so it keeps
+  // working with the plugin window closed. Message thread only.
+  startTimerHz(10);
 }
 
-PluginProcessor::~PluginProcessor() = default;
+PluginProcessor::~PluginProcessor() {
+  stopTimer();
+}
 
 // PUBLIC
 const juce::String PluginProcessor::getName() const {
@@ -85,6 +93,10 @@ void PluginProcessor::changeProgramName(int, const juce::String&) {}
 
 void PluginProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   _engine.setSampleRate(static_cast<unsigned>(sampleRate));
+  // Capture the root zero-crossing state once; the hard bar sync reuses it.
+  _engine.captureRootZeroState();
+  _engine.doQueuedActions();
+  _rootZeroStateCaptured = true;
   juce::ignoreUnused(sampleRate, samplesPerBlock);
 }
 
@@ -180,28 +192,57 @@ void PluginProcessor::process(juce::MidiBuffer& midiMessages, int numSamples) {
   if (_midiResetRequested.exchange(false))
     _midiOutput.allNotesOff(0);
 
-  // Loop / seek detection: while the transport is already rolling, a backward
-  // or oversized ppq jump means the host jumped position, so reset the engine
-  // and release held notes. A stop->start transition is not a seek, so the
-  // engine resumes without a reset (per the Phase 7 decision).
+  // Transport alignment (Phase 9, B3a): a stop->start only resumes if the
+  // playhead did not move while stopped. Any position change — and any seek
+  // while rolling — re-seeds the nodes and quantiser from ppq so the output is
+  // deterministic and stays aligned with the host grid.
+  const double beatsPerBar = beatsPerBarForSignature(
+      _lastTempo.timeSigNumerator, _lastTempo.timeSigDenominator);
+  const double ppq = _lastTempo.ppqPosition;
+  bool resync = false;
+
   if (_lastTempo.hasPpq) {
-    if (_wasPlaying && _lastTempo.isPlaying && _hasLastPpq) {
-      const double sampleRate = getSampleRate();
-      const double expected =
-          sampleRate > 0.0
-              ? ((static_cast<double>(numSamples) * _lastTempo.bpm / 60.0) /
-                 sampleRate)
-              : 0.0;
-      if (isPositionJump(_lastPpq, _lastTempo.ppqPosition, expected)) {
-        _engine.reset();
-        _engine.doQueuedActions();
-        _midiOutput.allNotesOff(0);
+    const double reportedSampleRate = getSampleRate();
+    const double sampleRate =
+        reportedSampleRate > 0.0 ? reportedSampleRate
+                                 : static_cast<double>(_engine.getSampleRate());
+    const double expectedDelta =
+        sampleRate > 0.0
+            ? ((static_cast<double>(numSamples) * _lastTempo.bpm / 60.0) /
+               sampleRate)
+            : 0.0;
+
+    if (_lastTempo.isPlaying) {
+      if (_wasPlaying && _hasLastPpq) {
+        if (isPositionJump(_lastPpq, ppq, expectedDelta))
+          resync = true;
+      } else if (!_wasPlaying) {
+        // First start, or resume after a stop. A pure pause (same ppq, within
+        // one block of normal advance) continues; a reset/seek while stopped
+        // must re-align.
+        if (!_hasPpqAtStop || std::abs(ppq - _ppqAtStop) > expectedDelta + 1e-3)
+          resync = true;
       }
+    } else if (_wasPlaying) {
+      // Record the position at the moment of stopping. If the host keeps
+      // advancing ppq while stopped, the start comparison re-aligns too.
+      _ppqAtStop = ppq;
+      _hasPpqAtStop = true;
     }
-    _lastPpq = _lastTempo.ppqPosition;
+
+    _lastPpq = ppq;
     _hasLastPpq = true;
   }
   _wasPlaying = _lastTempo.isPlaying;
+
+  if (resync) {
+    _engine.reset();
+    _engine.clearQuantiserEvents();
+    _engine.seekQuantiserToBars(ppq / beatsPerBar);
+    _engine.doQueuedActions();
+    _midiOutput.allNotesOff(0);
+    _transportResyncCount.fetch_add(1);
+  }
 
   const bool run = !_lastTempo.hasHost || _lastTempo.isPlaying;
 
@@ -209,10 +250,24 @@ void PluginProcessor::process(juce::MidiBuffer& midiMessages, int numSamples) {
   const float rootFreqParam = _apvts.getRawParameterValue("rootFreq")->load();
   const double effectiveBpm =
       _lastTempo.hasHost ? _lastTempo.bpm : rootFreqParam * 60.0;
-  const double effectiveRoot =
-      _lastTempo.isPlaying ? _lastTempo.bpm / 60.0 : rootFreqParam;
+  const double effectiveRoot = _lastTempo.isPlaying
+                                   ? _lastTempo.bpm / (60.0 * beatsPerBar)
+                                   : rootFreqParam;
   _displayBpm.store(effectiveBpm);
   _displayRootFreq.store(effectiveRoot);
+
+  // A meter change while playing changes the bar length: re-seed the grid at
+  // the new bar phase (grid only, no node reset).
+  const bool meterChanged =
+      _lastTimeSigNumerator != 0 &&
+      (_lastTimeSigNumerator != _lastTempo.timeSigNumerator ||
+       _lastTimeSigDenominator != _lastTempo.timeSigDenominator);
+  _lastTimeSigNumerator = _lastTempo.timeSigNumerator;
+  _lastTimeSigDenominator = _lastTempo.timeSigDenominator;
+  if (meterChanged && run && _lastTempo.hasPpq) {
+    _engine.seekQuantiserToBars(ppq / beatsPerBar);
+    _engine.doQueuedActions();
+  }
 
   // Mirror the message-thread mixer snapshot into the audio-thread MidiOutput.
   const auto& snapshot = _controller.getMixerSnapshot();
@@ -233,19 +288,65 @@ void PluginProcessor::process(juce::MidiBuffer& midiMessages, int numSamples) {
           ? RoutingMode::PerChannel
           : RoutingMode::DrumMachine);
 
+  const bool hostSynced = run && _lastTempo.hasPpq;
+  int barBoundarySample = -1;
+
   if (run) {
     const float quantAmount =
         _apvts.getRawParameterValue("masterQuantAmount")->load();
 
-    _engine.setNodeFrequency(0, effectiveRoot, false);
+    if (std::abs(effectiveRoot - _lastAppliedRootFreq) > 1e-6) {
+      // C: the root is the bar. Inherit scales every child, preserving the
+      // canonical multiples stored in the tree.
+      _engine.setNodeFrequency(0, effectiveRoot, true);
+      _lastAppliedRootFreq = effectiveRoot;
+    }
+
+    const float delayBpm = static_cast<float>(effectiveBpm);
+    if (std::abs(delayBpm - _lastQuantiserDelayBpm) > 1e-4f) {
+      _engine.setQuantiserNoteDelayTempo(delayBpm);
+      _lastQuantiserDelayBpm = delayBpm;
+    }
+
+    if (hostSynced && !_rootZeroStateCaptured) {
+      _engine.captureRootZeroState();
+      _rootZeroStateCaptured = true;
+    }
+
+    if (hostSynced && effectiveBpm > 0.0) {
+      const double reportedSampleRate = getSampleRate();
+      const double sampleRate =
+          reportedSampleRate > 0.0
+              ? reportedSampleRate
+              : static_cast<double>(_engine.getSampleRate());
+      const double barPhase = ppq / beatsPerBar - std::floor(ppq / beatsPerBar);
+      const double samplesPerBar =
+          (beatsPerBar * 60.0 / effectiveBpm) * sampleRate;
+
+      double toBar = (1.0 - barPhase) * samplesPerBar;
+      if (barPhase < 1e-9)
+        toBar = 0.0;
+      if (toBar < static_cast<double>(numSamples)) {
+        barBoundarySample = static_cast<int>(std::llround(toBar));
+        if (barBoundarySample >= numSamples)
+          barBoundarySample = -1;
+      }
+    }
+
+    _engine.setSuppressNaturalRootEvents(hostSynced);
+
     _engine.setQuantiseAmount(quantAmount);
     _engine.doQueuedActions();
+
     for (int sample = 0; sample < numSamples; ++sample) {
+      if (sample == barBoundarySample)
+        _engine.syncRootToBarNow();
       _currentSample = sample;
       _engine.step();
     }
     _midiOutput.flush(midiMessages);
   } else {
+    _engine.setSuppressNaturalRootEvents(false);
     _midiOutput.allNotesOff(0);
     _midiOutput.flush(midiMessages);
   }
@@ -329,7 +430,7 @@ void PluginProcessor::parameterChanged(const juce::String& parameterID,
   else if (field == "mute")
     _controller.setNodeMuted(id, newValue > 0.5f);
   else if (field == "freq")
-    _controller.setNodeFrequency(id, static_cast<double>(newValue), false);
+    _controller.setNodeFrequencyMultiple(id, static_cast<double>(newValue));
   else if (field == "quantAmount")
     _controller.setNodeQuantiseAmount(id, newValue);
   _syncingParams = false;
@@ -356,9 +457,9 @@ void PluginProcessor::syncNodeParams(int nodeId) {
   };
 
   if (nodeId != NetworkState::kRootNodeId)
-    setValue("freq",
-             exists ? static_cast<float>(_controller.getNodeFrequency(nodeId))
-                    : cfg.newNodeFreqMultiple);
+    setValue("freq", exists ? static_cast<float>(
+                                  _controller.getNodeFrequencyMultiple(nodeId))
+                            : cfg.newNodeFreqMultiple);
   setValue("volume", exists ? _controller.getNodeVolume(nodeId) : 0.0f);
   setValue("pitch",
            static_cast<float>(exists ? _controller.getNodeMidiNote(nodeId)
@@ -369,10 +470,18 @@ void PluginProcessor::syncNodeParams(int nodeId) {
 }
 
 void PluginProcessor::applyHostGrid() {
-  // Called every frame: the controller skips nodes that already match, so this
-  // also picks up a node that was just switched to "follow host".
   _controller.applyHostGrid(mapTimeSignatureToGrid(
       _hostTimeSigNumerator.load(), _hostTimeSigDenominator.load()));
+}
+
+void PluginProcessor::timerCallback() {
+  // Cheap (one compare per existing node) and also picks up nodes created
+  // since the last tick. Runs on the message thread; no audio-thread work.
+  applyHostGrid();
+}
+
+int PluginProcessor::getTransportResyncCount() const {
+  return _transportResyncCount.load();
 }
 
 }  // namespace neurythmic

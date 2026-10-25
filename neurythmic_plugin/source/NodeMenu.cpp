@@ -98,15 +98,13 @@ NodeMenu::NodeMenu(NetworkController& controller, int nodeId)
   _tabMidi.onClick = [this] { setTab(2); };
 
   _freqMatrix.setListener([this](int idx) {
-    const double rootFreq =
-        _controller.getNodeFrequency(NetworkState::kRootNodeId);
-    _controller.setNodeFrequency(
-        _nodeId, rootFreq * MenuValues::frequencyMultiple(idx), false);
+    _controller.setNodeFrequencyMultiple(_nodeId,
+                                         MenuValues::frequencyMultiple(idx));
     refreshFrequency();
   });
 
   _fineTune.onValueChange = [this] {
-    _controller.setNodeFrequency(_nodeId, _fineTune.getValue(), false);
+    _controller.setNodeFrequencyMultiple(_nodeId, _fineTune.getValue());
   };
 
   _syncMatrix.setListener([this](int idx) {
@@ -248,13 +246,10 @@ void NodeMenu::setTab(int tab) {
 }
 
 void NodeMenu::refreshFrequency() {
-  const double rootFreq =
-      _controller.getNodeFrequency(NetworkState::kRootNodeId);
-  const double freq = _controller.getNodeFrequency(_nodeId);
-  const double mult = rootFreq > 0.0 ? freq / rootFreq : 1.0;
+  const double mult = _controller.getNodeFrequencyMultiple(_nodeId);
   _freqMatrix.setSelected(MenuValues::nearestFrequencyIndex(mult));
-  _fineTune.setRange(freq / 2.0, freq * 2.0);
-  _fineTune.setValue(freq, juce::dontSendNotification);
+  _fineTune.setRange(mult / 2.0, mult * 2.0);
+  _fineTune.setValue(mult, juce::dontSendNotification);
   _selfNoise.setValue(_controller.getNodeSelfNoise(_nodeId),
                       juce::dontSendNotification);
   _phase.setValue(_controller.getNodePhaseOffset(_nodeId),

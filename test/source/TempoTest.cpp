@@ -9,15 +9,16 @@
 // Time-signature -> CPGLib grid mapping
 // ---------------------------------------------------------------------------
 
-TEST(TempoMapping, MapsByDenominator) {
+TEST(TempoMapping, MapsByBarSteps) {
   EXPECT_EQ(neurythmic::mapTimeSignatureToGrid(4, 4),
             MatsuokaEngine::gridType::_32nd);
   EXPECT_EQ(neurythmic::mapTimeSignatureToGrid(3, 4),
-            MatsuokaEngine::gridType::_32nd);
+            MatsuokaEngine::gridType::_24th);
   EXPECT_EQ(neurythmic::mapTimeSignatureToGrid(6, 8),
             MatsuokaEngine::gridType::_24th);
+  // 7/8 is 28 steps/bar: equidistant from 24 and 32, so it falls back to 32.
   EXPECT_EQ(neurythmic::mapTimeSignatureToGrid(7, 8),
-            MatsuokaEngine::gridType::_24th);
+            MatsuokaEngine::gridType::_32nd);
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +123,7 @@ TEST(TransportDisplay, PlayingRootFollowsTempo) {
   p.processBlock(buffer, midi);
 
   EXPECT_NEAR(p.getBpm(), 120.0, 1e-6);
-  EXPECT_NEAR(p.getRootFreq(), 2.0, 1e-6);  // 120 / 60
+  EXPECT_NEAR(p.getRootFreq(), 0.5, 1e-6);  // 120 / (60 * 4)
 }
 
 TEST(TransportDisplay, NoHostFallsBackToRootFreq) {
